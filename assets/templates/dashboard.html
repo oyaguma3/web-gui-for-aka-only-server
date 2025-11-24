@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="/assets/css/style.css">
+    <script src="/assets/js/htmx.min.js"></script>
+    <script src="/assets/js/alpine.min.js" defer></script>
+</head>
+
+<body x-data="{ 
+    showModal: false, 
+    modalMode: 'create', 
+    currentSub: {},
+    openCreate() {
+        this.modalMode = 'create';
+        this.currentSub = { imsi: '', ki: '', opc: '', sqn: '000000000000', amf: '8000' };
+        this.showModal = true;
+    },
+    openEdit(imsi) {
+        this.modalMode = 'edit';
+        // Fetch details via API or pass data. For simplicity, we'll fetch via HTMX or just set IMSI and let user fill rest? 
+        // Better: Fetch details via fetch API to populate form
+        fetch('/subscribers/' + imsi)
+            .then(res => res.json())
+            .then(data => {
+                this.currentSub = data;
+                this.showModal = true;
+            });
+    }
+}">
+    <div class="container">
+        <div class="header">
+            <div class="header-title">AKA-Only-Server Web GUI</div>
+            <form action="/logout" method="POST" style="margin:0;">
+                <button type="submit" class="btn btn-sm">Logout</button>
+            </form>
+        </div>
+
+        <div class="toolbar">
+            <div class="stats">
+                Total Subscribers: <span id="total-count">{{ .TotalCount }}</span>
+            </div>
+            <button class="btn btn-primary" style="width: auto;" @click="openCreate()">Add Subscriber</button>
+        </div>
+
+        {{ if gt .TotalCount 100 }}
+        <div class="alert-warning" id="count-warning">
+            Total subscribers: {{ .TotalCount }}. Displaying all items may be slow.
+        </div>
+        {{ end }}
+
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>IMSI</th>
+                        <th>SQN</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="subscriber-list" hx-get="/subscribers/list" hx-trigger="load, refreshList from:body">
+                    <!-- List loaded via HTMX -->
+                    <tr>
+                        <td colspan="4" style="text-align:center;">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" x-show="showModal" x-cloak style="display: none;">
+        <div class="modal-content" @click.away="showModal = false">
+            <div class="modal-header">
+                <div class="modal-title" x-text="modalMode === 'create' ? 'Add Subscriber' : 'Edit Subscriber'"></div>
+                <button class="close-btn" @click="showModal = false">&times;</button>
+            </div>
+
+            <form id="sub-form" :hx-post="modalMode === 'create' ? '/subscribers' : ''"
+                :hx-put="modalMode === 'edit' ? '/subscribers/' + currentSub.imsi : ''" hx-ext="json-enc"
+                hx-target="#subscriber-list" hx-swap="none"
+                @htmx:after-request="if($event.detail.successful) { showModal = false; }" x-data="{
+                      validate() {
+                          // Simple regex checks for visual feedback if needed, 
+                          // but actual submission is handled by HTMX + Backend
+                      }
+                  }">
+
+                <div class="form-group">
+                    <label class="form-label">IMSI (15 digits)</label>
+                    <input type="text" name="imsi" class="form-input" x-model="currentSub.imsi"
+                        :readonly="modalMode === 'edit'" pattern="^[0-9]{15}$" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Ki (32 hex)</label>
+                    <input type="text" name="ki" class="form-input" x-model="currentSub.ki" pattern="^[0-9a-fA-F]{32}$"
+                        required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">OPC (32 hex)</label>
+                    <input type="text" name="opc" class="form-input" x-model="currentSub.opc"
+                        pattern="^[0-9a-fA-F]{32}$" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">SQN (12 hex)</label>
+                    <input type="text" name="sqn" class="form-input" x-model="currentSub.sqn"
+                        pattern="^[0-9a-fA-F]{12}$" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">AMF (4 hex)</label>
+                    <input type="text" name="amf" class="form-input" x-model="currentSub.amf" pattern="^[0-9a-fA-F]{4}$"
+                        required>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn" @click="showModal = false">Cancel</button>
+                    <button type="submit" class="btn btn-primary" style="width: auto;">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // HTMX JSON Extension to send JSON instead of Form Data
+        htmx.defineExtension('json-enc', {
+            onEvent: function (name, evt) {
+                if (name === "htmx:configRequest") {
+                    evt.detail.headers['Content-Type'] = "application/json";
+                }
+            },
+            encodeParameters: function (xhr, parameters, elt) {
+                xhr.overrideMimeType('text/json');
+                const body = {};
+                // Manually build JSON from form inputs inside the element
+                const inputs = elt.querySelectorAll('input');
+                inputs.forEach(input => {
+                    body[input.name] = input.value;
+                });
+                return JSON.stringify(body);
+            }
+        });
+    </script>
+</body>
+
+</html>

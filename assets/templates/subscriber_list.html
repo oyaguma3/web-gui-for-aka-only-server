@@ -1,0 +1,12 @@
+{{ range .Subscribers }}
+<tr>
+    <td>{{ .IMSI }}</td>
+    <td>{{ .Sqn }}</td>
+    <td>{{ .CreatedAt }}</td>
+    <td>
+        <button class="btn btn-sm btn-primary" style="width: auto;" @click="openEdit('{{ .IMSI }}')">Edit</button>
+        <button class="btn btn-sm btn-danger" hx-delete="/subscribers/{{ .IMSI }}"
+            hx-confirm="Are you sure you want to delete subscriber {{ .IMSI }}?" style="width: auto;">Delete</button>
+    </td>
+</tr>
+{{ end }}
