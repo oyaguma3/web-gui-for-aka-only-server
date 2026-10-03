@@ -15,6 +15,7 @@ import (
 	"net/http"
 
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/auth"
 )
 
 //go:embed templates static
@@ -25,11 +26,24 @@ type AdminAPI interface {
 	Status(ctx context.Context) (adminapi.Status, error)
 }
 
+// AuthService はログイン、セッション、アカウントの操作。*auth.Service が満たす。
+type AuthService interface {
+	Login(ctx context.Context, id, password string) (string, auth.Account, error)
+	Authenticate(ctx context.Context, token string) (auth.Account, error)
+	Logout(ctx context.Context, token string) error
+	ListAccounts(ctx context.Context, actor auth.Account) ([]auth.Account, error)
+	CreateAccount(ctx context.Context, actor auth.Account, id string, role auth.Role, password string) error
+	DeleteAccount(ctx context.Context, actor auth.Account, id string) error
+	ResetPassword(ctx context.Context, actor auth.Account, id, password string) error
+	ChangePassword(ctx context.Context, actor auth.Account, token, current, password string) (string, error)
+}
+
 // Handler は画面のハンドラー。
 type Handler struct {
 	log     *slog.Logger
 	version string
 	admin   AdminAPI
+	auth    AuthService
 	pages   pages
 	static  *staticFiles
 }
@@ -40,11 +54,12 @@ type Options struct {
 	// Version は画面のフッターに出すバージョン。
 	Version string
 	Admin   AdminAPI
+	Auth    AuthService
 }
 
 // New は Handler を作る。テンプレートと静的ファイルはここで読み込む。
 func New(opts Options) (*Handler, error) {
-	h := &Handler{log: opts.Log, version: opts.Version, admin: opts.Admin}
+	h := &Handler{log: opts.Log, version: opts.Version, admin: opts.Admin, auth: opts.Auth}
 	var err error
 	if h.pages, err = parsePages(); err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -59,7 +74,20 @@ func New(opts Options) (*Handler, error) {
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", h.static)
-	mux.HandleFunc("GET /{$}", h.dashboard)
+
+	mux.HandleFunc("GET /login", h.loginPage)
+	mux.HandleFunc("POST /login", h.login)
+	mux.HandleFunc("POST /logout", h.logout)
+	mux.Handle("GET /password", h.authedForPasswordChange(h.passwordPage))
+	mux.Handle("POST /password", h.authedForPasswordChange(h.changePassword))
+
+	mux.Handle("GET /{$}", h.authed(h.dashboard))
+
+	mux.Handle("GET /accounts", h.adminOnly(h.accountsPage))
+	mux.Handle("POST /accounts", h.adminOnly(h.createAccount))
+	mux.Handle("POST /accounts/{id}/delete", h.adminOnly(h.deleteAccount))
+	mux.Handle("POST /accounts/{id}/password", h.adminOnly(h.resetPassword))
+
 	mux.HandleFunc("/", h.notFound)
 
 	cop := http.NewCrossOriginProtection()
@@ -71,6 +99,7 @@ func (h *Handler) Routes() http.Handler {
 
 	var handler http.Handler = mux
 	handler = cop.Handler(handler)
+	handler = withRemote(handler)
 	handler = securityHeaders(handler)
 	handler = h.accessLog(handler)
 	return handler

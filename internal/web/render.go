@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/auth"
 )
 
 // pages はページ名（templates/pages/ のファイル名から拡張子を除いたもの）ごとのテンプレート。
@@ -17,6 +19,8 @@ type pages map[string]*template.Template
 
 // funcs はテンプレートで使う関数。
 var funcs = template.FuncMap{
+	// minPasswordLen はパスワードの最小文字数。入力欄の制限と説明に使う。
+	"minPasswordLen": func() int { return auth.MinPasswordLen },
 	// datetime は日時を BFF のタイムゾーン（環境変数 TZ）で表示する。
 	"datetime": func(t time.Time) string {
 		if t.IsZero() {
@@ -50,11 +54,13 @@ func parsePages() (pages, error) {
 type view struct {
 	Title   string
 	Version string
+	// User はログイン中のアカウント。ログインしていなければ nil。
+	User *auth.Account
 	// Data はページごとの値。
 	Data any
 }
 
-// render はページを描画して返す。描画が終わってから書き出すので、途中で失敗しても壊れた HTML は返さない。
+// render はページをレイアウトに入れて描画して返す。
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, page, title string, data any) {
 	t, ok := h.pages[page]
 	if !ok {
@@ -62,9 +68,29 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, pag
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	v := view{Title: title, Version: h.version, Data: data}
+	if a, ok := accountFrom(r.Context()); ok {
+		v.User = &a
+	}
+	h.execute(w, r, status, t, "layout", v)
+}
+
+// renderBlock はページの中の 1 つのテンプレート（htmx で差し替える部分）だけを描画して返す。
+func (h *Handler) renderBlock(w http.ResponseWriter, r *http.Request, status int, page, block string, data any) {
+	t, ok := h.pages[page]
+	if !ok {
+		h.log.Error("unknown page template", "page", page)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	h.execute(w, r, status, t, block, data)
+}
+
+// execute はテンプレートを描画して返す。描画が終わってから書き出すので、途中で失敗しても壊れた HTML は返さない。
+func (h *Handler) execute(w http.ResponseWriter, r *http.Request, status int, t *template.Template, name string, data any) {
 	var buf bytes.Buffer
-	if err := t.ExecuteTemplate(&buf, "layout", view{Title: title, Version: h.version, Data: data}); err != nil {
-		h.log.Error("render template", "page", page, "error", err)
+	if err := t.ExecuteTemplate(&buf, name, data); err != nil {
+		h.log.Error("render template", "template", name, "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -83,8 +109,19 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, pag
 type errorData struct {
 	Status  int
 	Message string
+	// Link と LinkLabel は案内するリンク。空ならホームへのリンクを出す。
+	Link      string
+	LinkLabel string
 }
 
 func (h *Handler) renderError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	h.render(w, r, status, "error", http.StatusText(status), errorData{Status: status, Message: message})
+	data := errorData{Status: status, Message: message}
+	if r.Header.Get("HX-Request") == "true" {
+		// htmx の操作では、差し替え先に関わらず本文全体をエラーの表示に置き換える。
+		w.Header().Set("HX-Retarget", "main")
+		w.Header().Set("HX-Reswap", "innerHTML")
+		h.renderBlock(w, r, status, "error", "content", view{Title: http.StatusText(status), Version: h.version, Data: data})
+		return
+	}
+	h.render(w, r, status, "error", http.StatusText(status), data)
 }

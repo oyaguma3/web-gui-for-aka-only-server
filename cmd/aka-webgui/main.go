@@ -13,9 +13,11 @@ import (
 	_ "time/tzdata"
 
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/auth"
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/certs"
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/config"
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/server"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/store"
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/web"
 )
 
@@ -63,8 +65,34 @@ func serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := cfg.CheckServe(); err != nil {
+		return err
+	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	log.Info("starting", "version", version)
+
+	openCtx, cancelOpen := context.WithTimeout(ctx, 10*time.Second)
+	st, err := store.Open(openCtx, store.Options{Addr: cfg.ValkeyAddr, Password: cfg.ValkeyPassword})
+	cancelOpen()
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	authSvc, err := auth.New(ctx, auth.Options{
+		Store:                st,
+		Log:                  log,
+		InitialAdminID:       cfg.InitialAdminID,
+		InitialAdminPassword: cfg.InitialAdminPassword,
+		SessionIdleTimeout:   cfg.SessionIdleTimeout,
+		SessionMaxAge:        cfg.SessionMaxAge,
+		MaxLoginFailures:     cfg.LoginMaxFailures,
+		LockDuration:         cfg.LoginLockDuration,
+		AuditMaxLen:          cfg.AuditMaxLen,
+	})
+	if err != nil {
+		return err
+	}
+	log.Info("initial admin", "user_id", cfg.InitialAdminID)
 
 	created, err := certs.EnsureFiles(cfg.TLSCertFile, cfg.TLSKeyFile, cfg.TLSHosts)
 	if err != nil {
@@ -95,7 +123,7 @@ func serve(ctx context.Context) error {
 	}
 	cancel()
 
-	h, err := web.New(web.Options{Log: log, Version: version, Admin: admin})
+	h, err := web.New(web.Options{Log: log, Version: version, Admin: admin, Auth: authSvc})
 	if err != nil {
 		return err
 	}

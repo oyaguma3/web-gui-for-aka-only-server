@@ -8,11 +8,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/auth"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/auth/authtest"
 )
 
 // fakeAdmin は管理API の代わり。
@@ -23,18 +26,59 @@ type fakeAdmin struct {
 
 func (f *fakeAdmin) Status(context.Context) (adminapi.Status, error) { return f.status, f.err }
 
-func newTestHandler(t *testing.T) http.Handler {
-	t.Helper()
-	return newTestHandlerWith(t, &fakeAdmin{status: adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3}})
+const (
+	ownerID = "root"
+	ownerPW = "owner-password-123"
+)
+
+var discard = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+// testEnv は画面のテスト環境。認証は本物の auth.Service をメモリ上のストアで動かす。
+type testEnv struct {
+	h     http.Handler
+	auth  *auth.Service
+	store *authtest.MemStore
 }
 
-func newTestHandlerWith(t *testing.T, admin AdminAPI) http.Handler {
+func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	h, err := New(Options{Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test", Admin: admin})
+	return newTestEnv(t, &fakeAdmin{status: adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3}}).h
+}
+
+func newTestEnv(t *testing.T, admin AdminAPI) *testEnv {
+	t.Helper()
+	st := authtest.NewMemStore()
+	svc, err := auth.New(t.Context(), auth.Options{
+		Store: st, Log: discard, InitialAdminID: ownerID, InitialAdminPassword: ownerPW,
+		SessionIdleTimeout: 30 * time.Minute, SessionMaxAge: 12 * time.Hour,
+		MaxLoginFailures: 5, LockDuration: 15 * time.Minute, AuditMaxLen: 1000,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return h.Routes()
+	h, err := New(Options{Log: discard, Version: "test", Admin: admin, Auth: svc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &testEnv{h: h.Routes(), auth: svc, store: st}
+}
+
+// request はリクエストを作る。cookie があれば付ける。form があれば POST のフォームとして送る。
+func request(method, path string, cookie *http.Cookie, form url.Values) *http.Request {
+	var body io.Reader
+	if form != nil {
+		body = strings.NewReader(form.Encode())
+	}
+	r := httptest.NewRequest(method, "https://gui.example"+path, body)
+	if form != nil {
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	// ブラウザの同一オリジンのリクエストと同じヘッダーを付ける。
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
+	if cookie != nil {
+		r.AddCookie(cookie)
+	}
+	return r
 }
 
 func do(h http.Handler, r *http.Request) *httptest.ResponseRecorder {
@@ -43,9 +87,30 @@ func do(h http.Handler, r *http.Request) *httptest.ResponseRecorder {
 	return w
 }
 
+// sessionCookieOf は応答で設定されたセッションの Cookie を返す。
+func sessionCookieOf(w *httptest.ResponseRecorder) *http.Cookie {
+	for _, c := range w.Result().Cookies() {
+		if c.Name == sessionCookie {
+			return c
+		}
+	}
+	return nil
+}
+
+// loginAs はログインしてセッションの Cookie を返す。
+func (e *testEnv) loginAs(t *testing.T, id, pw string) *http.Cookie {
+	t.Helper()
+	w := do(e.h, request("POST", "/login", nil, url.Values{"id": {id}, "password": {pw}, "next": {"/"}}))
+	c := sessionCookieOf(w)
+	if w.Code != http.StatusSeeOther || c == nil || c.Value == "" {
+		t.Fatalf("login %s: status %d, cookie %v", id, w.Code, c)
+	}
+	return c
+}
+
 func TestDashboard(t *testing.T) {
-	h := newTestHandler(t)
-	w := do(h, httptest.NewRequest("GET", "https://gui.example/", nil))
+	env := newTestEnv(t, &fakeAdmin{status: adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3}})
+	w := do(env.h, request("GET", "/", env.loginAs(t, ownerID, ownerPW), nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
@@ -152,8 +217,8 @@ func TestDashboardAdminError(t *testing.T) {
 			want: "管理API がエラーを返しました。",
 		},
 	} {
-		h := newTestHandlerWith(t, &fakeAdmin{err: tc.err})
-		w := do(h, httptest.NewRequest("GET", "https://gui.example/", nil))
+		env := newTestEnv(t, &fakeAdmin{err: tc.err})
+		w := do(env.h, request("GET", "/", env.loginAs(t, ownerID, ownerPW), nil))
 		// 管理API に届かなくても画面自体は返す。
 		if w.Code != http.StatusOK {
 			t.Errorf("%s: status = %d", name, w.Code)

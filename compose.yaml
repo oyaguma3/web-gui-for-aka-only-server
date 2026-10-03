@@ -5,6 +5,9 @@ services:
       args:
         VERSION: ${WEBGUI_VERSION:-dev}
     restart: unless-stopped
+    depends_on:
+      valkey:
+        condition: service_healthy
     environment:
       TZ: ${TZ:-Asia/Tokyo}
       WEBGUI_ADDR: ":8443"
@@ -14,6 +17,15 @@ services:
       WEBGUI_ADMIN_URL: ${WEBGUI_ADMIN_URL:-https://aka-only-server:9443/admin/v1}
       WEBGUI_ADMIN_CLIENT_CERT: /certs/admin-client.pem
       WEBGUI_ADMIN_SERVER_CERT: /certs/admin-server.pem
+      WEBGUI_VALKEY_ADDR: valkey:6379
+      WEBGUI_VALKEY_PASSWORD: ${VALKEY_PASSWORD:?.env に VALKEY_PASSWORD を設定してください}
+      WEBGUI_INITIAL_ADMIN_ID: ${WEBGUI_INITIAL_ADMIN_ID:?.env に WEBGUI_INITIAL_ADMIN_ID を設定してください}
+      WEBGUI_INITIAL_ADMIN_PASSWORD: ${WEBGUI_INITIAL_ADMIN_PASSWORD:?.env に WEBGUI_INITIAL_ADMIN_PASSWORD を設定してください}
+      WEBGUI_SESSION_IDLE_TIMEOUT: ${WEBGUI_SESSION_IDLE_TIMEOUT:-30m}
+      WEBGUI_SESSION_MAX_AGE: ${WEBGUI_SESSION_MAX_AGE:-12h}
+      WEBGUI_LOGIN_MAX_FAILURES: ${WEBGUI_LOGIN_MAX_FAILURES:-5}
+      WEBGUI_LOGIN_LOCK_DURATION: ${WEBGUI_LOGIN_LOCK_DURATION:-15m}
+      WEBGUI_AUDIT_MAX: ${WEBGUI_AUDIT_MAX:-10000}
       WEBGUI_LOG_LEVEL: ${WEBGUI_LOG_LEVEL:-info}
     volumes:
       # 自動生成したブラウザ向けの自己署名証明書を保存する。
@@ -28,6 +40,24 @@ services:
       - default
       - aka-av
 
+  valkey:
+    image: valkey/valkey:9
+    restart: unless-stopped
+    # アカウントとセッションを保存する。AOF は 1 秒ごとに同期する。
+    command: ["valkey-server", "--appendonly", "yes", "--appendfsync", "everysec", "--requirepass", "${VALKEY_PASSWORD}"]
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    volumes:
+      - valkey-data:/data
+    # 共有ネットワーク（aka-av）には出さない。
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$$VALKEY_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 networks:
   # aka-only-server の compose が作る共有ネットワーク。ホスト名 aka-only-server で管理API に接続する。
   aka-av:
@@ -36,3 +66,4 @@ networks:
 
 volumes:
   webgui-data:
+  valkey-data:

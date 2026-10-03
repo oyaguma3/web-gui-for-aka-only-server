@@ -11,10 +11,10 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 - 作業はステップ単位で区切り、各ステップの終わりに「作ったもの」と「実際に動かして確かめたこと」を報告して確認をもらう。
   1. 骨格（環境変数による設定、slog、HTTPS 終端と自己署名の自動生成、テンプレートと静的ファイルの配信）… 実装済み
   2. 管理API クライアント（mTLS、`X-Operator-Id`、エラー処理）… 実装済み。simwifi での確認のため Dockerfile と compose.yaml（BFF のみ）も先に作った。Valkey はステップ3で加える
-  3. アカウントとセッション（argon2id、ログイン試行の制限、BFF 監査ログ、権限チェック）
-  4. 画面（加入者 → AVクライアント → AV用サーバー証明書 → ログと監査ログ → アカウント管理 → ダッシュボード）
+  3. アカウントとセッション（argon2id、ログイン試行の制限、BFF 監査ログ、権限チェック）… 実装済み。アカウントの作成を確かめるため、ログイン・パスワード変更・アカウント管理の画面もこのステップで作った
+  4. 画面（加入者 → AVクライアント → AV用サーバー証明書 → ログと監査ログ → ダッシュボード）
   5. compose、aka-only-server との通しの確認、`docs/operation-guide.md`、`README.md`
-- `docs/screen-spec.md` は実装と並行して書く。最初の画面（加入者）ができた時点で書き起こし、画面ごとに追記する。
+- `docs/screen-spec.md` は実装と並行して書く。ステップ3で共通部分・ログイン・パスワード変更・アカウント管理を書き起こした。画面ごとに追記する。
 - aka-only-server はフェーズ1（認証ベクターAPI）とフェーズ2（管理API）を実装済み。場所は `/home/sumitakekino/projects/aka-only-server`。
 
 ## 最初に読むもの
@@ -62,7 +62,7 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 
 ## 検証の進め方
 
-- 単体テストに加えて、Valkey を使う結合テストは接続先を環境変数で指定したときだけ実行する形にする。管理API の契約テスト（`internal/adminapi/integration_test.go`）も同様で、`WEBGUI_TEST_ADMIN_*` で接続先を指定したときだけ動く。aka-only-server 側は `AKA_TEST_VALKEY_ADDR` を使い、パッケージごとに論理データベースの番号を分けている。
+- 単体テストに加えて、Valkey を使う結合テストは接続先を環境変数で指定したときだけ実行する形にする。管理API の契約テスト（`internal/adminapi/integration_test.go`）も同様で、`WEBGUI_TEST_ADMIN_*` で接続先を指定したときだけ動く。aka-only-server 側は `AKA_TEST_VALKEY_ADDR` を使い、パッケージごとに論理データベースの番号を分けている。こちらは `WEBGUI_TEST_VALKEY_ADDR`（と `WEBGUI_TEST_VALKEY_PASSWORD`）で、`internal/store` は論理データベース 1 番を使う。手元では専用の Valkey コンテナを別ポートで立てて使い、終わったら消す。
 - 通しの確認は、compose を別のプロジェクト名（`-p`）と専用の `.env`、ループバックの別ポートで起動して行い、終わったらコンテナ・ボリューム・イメージを片付ける。
 - 実装した内容は、テストが通るだけでなく、実際に起動して操作して確かめる。確かめていない点は報告に明記する。
 - ドキュメントに載せる手順（コマンド）は、実際に試してから載せる。
@@ -73,6 +73,7 @@ VPN 越しのアクセス、`tailscale cert`、Docker での動作、同一ホ�
 
 - 接続は `ssh simwifi`（ユーザー `claude`、sudo はパスワード不要）。Debian 13、x86_64。
 - Tailscale のアドレスは `100.126.128.93`、名前は `venus1001.tail5ec249.ts.net`。tailnet の HTTPS 証明書は有効にしてある。手元の WSL も同じ tailnet にいる。
+- ホスト OS の DNS との競合を避けるため、tailnet の MagicDNS は有効のまま、各端末で `tailscale set --accept-dns=false` にする（simwifi は設定済み）。OS では `*.ts.net` の名前を引けないので、検証では IP アドレスで接続するか、curl の `--resolve` を使う。
 - `sudo tailscale cert --cert-file <cert> --key-file <key> venus1001.tail5ec249.ts.net` で Let's Encrypt の証明書を取り出せる（発行済みで tailscaled にキャッシュされている。出力ファイルは root 所有になるので chown する）。Let's Encrypt の発行回数制限があるので、キャッシュを消さない。
 - 作業は `~/aka-work/` の中だけで行う。`~/simwifi` は別アプリの開発で使っていたものなので触れない。
 - ソースは tar を ssh で流して転送する（GitHub への push は不要）。コミット済みのものは `git archive`、コミット前の作業ツリーは `git ls-files -co --exclude-standard -z | tar -c --null -T -` で送る。
