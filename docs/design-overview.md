@@ -27,15 +27,20 @@ aka-only-server の管理 GUI 実装の1つ。aka-only-server の管理API だ�
 - HTMX と Pico CSS はファイルをリポジトリに同梱して配信する。Alpine.js は使わない。
 - 外部依存は `github.com/valkey-io/valkey-go`（Valkey クライアント）と `golang.org/x/crypto`（argon2id）に限る。
 - module パス: `github.com/oyaguma3/web-gui-for-aka-only-server`
+- コマンド名は `aka-webgui`。設定は環境変数だけで受け取り、名前の接頭辞は `WEBGUI_` とする。
 - 配備: Docker Compose（BFF + 専用 Valkey）。
 
 ## 3. ブラウザ向けの HTTPS とネットワーク
 
 - GUI はインターネットに直接公開せず、VPN 越しのアクセスを基本とする。SSH トンネルは前提にしない。
 - HTTPS は BFF 自身（Go）で終端する。リバースプロキシは置かない。
-- サーバー証明書は自己署名または持ち込みとする。初回起動時に証明書がなければ自己署名を自動生成する。
-  - Tailscale を使う場合は `tailscale cert` で発行した証明書を持ち込めば、ブラウザの警告が出ない。
+- サーバー証明書は自己署名または持ち込みとする。証明書と秘密鍵はファイル（PEM）で持ち、パスは設定で与える。
+  - 起動時に証明書と秘密鍵のどちらもなければ、自己署名（ECDSA P-256、有効期間10年）を生成してそのパスに保存する。SAN に入れるホスト名と IP アドレスは設定で与える。片方だけある場合は、持ち込みの途中とみなして起動を止める。
+  - 稼働中は1分ごとにファイルの内容を確かめ、変わっていたら再起動なしで読み直す。証明書と秘密鍵が対応しないなど読み直しに失敗した場合は、それまでの証明書を使い続けて次の確認で再試行する。
+  - Tailscale を使う場合は `tailscale cert` で発行した証明書を持ち込めば、ブラウザの警告が出ない。定期的な更新もそのまま反映される。
   - WireGuard などの場合は自己署名を使い、ブラウザ側で信頼設定をする。
+- TLS 1.2 以上、HTTP/2 に対応する。
+- HSTS は付けない。自己署名の証明書でブラウザの警告を越えて使う運用では、HSTS が付くと警告を越えられなくなるため。
 - 待ち受けアドレスは設定で指定する。Docker が公開したポートは ufw の規則を通らないため、`ports` のバインド先を VPN 側のアドレスに限定する。
 
 ## 4. アカウントと権限
@@ -83,7 +88,10 @@ aka-only-server の管理 GUI 実装の1つ。aka-only-server の管理API だ�
 - セッションはサーバー側（Valkey）に保持し、Cookie には ID だけを入れる。Cookie は HttpOnly / Secure / SameSite を付ける。
 - CSRF 対策は `net/http` の `CrossOriginProtection` を使う。
 - ログイン試行回数を制限する。
-- Ki / OPc は BFF のログに出さない。
+- Ki / OPc は BFF のログに出さない。アクセスログにはクエリ文字列を出さない。
+- 画面のレスポンスには `Cache-Control: no-store` を付け、ブラウザにもキャッシュさせない。
+- CSP でスクリプトとスタイルを同梱のファイルだけに限る。htmx は `htmx-config` で eval とインラインのスタイル挿入を止める。
+- htmx の履歴キャッシュ（画面の HTML をブラウザの sessionStorage に保存する機能）は使わない。鍵情報を含む画面が残らないようにするため。
 
 ## 6. 画面
 

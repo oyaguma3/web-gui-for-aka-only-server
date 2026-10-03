@@ -1,2 +1,5 @@
 # ローカルのパスを含むので共有しない
 .claude/settings.json
+.env
+*.pem
+/aka-webgui
