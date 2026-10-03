@@ -66,6 +66,7 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 
 - 単体テストに加えて、Valkey を使う結合テストは接続先を環境変数で指定したときだけ実行する形にする。管理API の契約テスト（`internal/adminapi/integration_test.go`）も同様で、`WEBGUI_TEST_ADMIN_*` で接続先を指定したときだけ動く。aka-only-server 側は `AKA_TEST_VALKEY_ADDR` を使い、パッケージごとに論理データベースの番号を分けている。こちらは `WEBGUI_TEST_VALKEY_ADDR`（と `WEBGUI_TEST_VALKEY_PASSWORD`）で、`internal/store` は論理データベース 1 番を使う。手元では専用の Valkey コンテナを別ポートで立てて使い、終わったら消す。
 - 通しの確認は、compose を別のプロジェクト名（`-p`）と専用の `.env`、ループバックの別ポートで起動して行い、終わったらコンテナ・ボリューム・イメージを片付ける。
+- GitHub Actions の CI（`.github/workflows/ci.yml`）が、push のたびにテスト（Valkey の結合テストを含む）、イメージのビルド、aka-only-server の main を相手にした契約テストを実行する。aka-only-server の管理API を変えたときは、こちらの CI の契約テストも確かめる。
 - 実装した内容は、テストが通るだけでなく、実際に起動して操作して確かめる。確かめていない点は報告に明記する。
 - ドキュメントに載せる手順（コマンド）は、実際に試してから載せる。
 

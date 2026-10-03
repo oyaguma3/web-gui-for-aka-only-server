@@ -1,0 +1,116 @@
+# テスト、イメージのビルド、aka-only-server の管理API との契約テストを行う。
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# 同じブランチで新しく push したら、古い実行は止める。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: テスト
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # internal/store の結合テストに使う。論理データベース 1 番を空にして使う。
+      valkey:
+        image: valkey/valkey:9
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: 整形の確認
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt で整形されていないファイル:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: テスト（Valkey の結合テストを含む）
+        env:
+          WEBGUI_TEST_VALKEY_ADDR: localhost:6379
+        run: go test -race -count=1 ./...
+
+  docker:
+    name: イメージと compose の設定
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: イメージのビルド
+        run: docker build --build-arg VERSION="${GITHUB_SHA::7}" -t aka-webgui:ci .
+      - name: compose の設定（同一ホストと別ホスト）
+        run: |
+          cp .env.example .env
+          sed -i -e 's|^VALKEY_PASSWORD=.*|VALKEY_PASSWORD=ci|' -e 's|^WEBGUI_INITIAL_ADMIN_PASSWORD=.*|WEBGUI_INITIAL_ADMIN_PASSWORD=ci-password|' .env
+          docker compose config -q
+          docker compose config --services
+          COMPOSE_FILE=compose.yaml docker compose config -q
+
+  contract:
+    name: 管理API との契約テスト
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      # aka-only-server の main を、運用ガイドの手順と同じように起動する。
+      - uses: actions/checkout@v7
+        with:
+          repository: oyaguma3/aka-only-server
+          path: aka-only-server
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: aka-only-server の起動と BFF の登録
+        working-directory: aka-only-server
+        run: |
+          cp .env.example .env
+          sed -i "s|^VALKEY_PASSWORD=.*|VALKEY_PASSWORD=ci-$(openssl rand -hex 12)|" .env
+          docker compose build -q
+          docker compose run --rm --no-deps -T aka-only-server client gen-cert -name bff > bff.pem
+          fp=$(docker compose run --rm --no-deps -T aka-only-server fingerprint < bff.pem)
+          sed -i "s|^AKA_ADMIN_CLIENTS=.*|AKA_ADMIN_CLIENTS=bff=${fp}|" .env
+          docker compose up -d
+          docker compose exec -T aka-only-server /aka-only-server admin-cert > admin.pem
+          git log -1 --format='aka-only-server: %h %s'
+      - name: 管理API に接続できるまで待つ
+        env:
+          WEBGUI_ADMIN_URL: https://127.0.0.1:9443/admin/v1
+          WEBGUI_ADMIN_CLIENT_CERT: aka-only-server/bff.pem
+          WEBGUI_ADMIN_SERVER_CERT: aka-only-server/admin.pem
+        run: |
+          go build -o /tmp/aka-webgui ./cmd/aka-webgui
+          for i in $(seq 1 30); do
+            /tmp/aka-webgui check-admin && exit 0
+            sleep 2
+          done
+          exit 1
+      - name: 契約テスト
+        env:
+          WEBGUI_TEST_ADMIN_URL: https://127.0.0.1:9443/admin/v1
+          WEBGUI_TEST_ADMIN_CLIENT_CERT: ${{ github.workspace }}/aka-only-server/bff.pem
+          WEBGUI_TEST_ADMIN_SERVER_CERT: ${{ github.workspace }}/aka-only-server/admin.pem
+          WEBGUI_TEST_ADMIN_AV_CERT: "1"
+        run: go test -count=1 -run Integration -v ./internal/adminapi/
+      - name: aka-only-server のログ（失敗時）
+        if: failure()
+        working-directory: aka-only-server
+        run: docker compose logs --no-color

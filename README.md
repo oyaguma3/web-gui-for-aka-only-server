@@ -1,5 +1,7 @@
 # web-gui-for-aka-only-server
 
+[![CI](https://github.com/oyaguma3/web-gui-for-aka-only-server/actions/workflows/ci.yml/badge.svg)](https://github.com/oyaguma3/web-gui-for-aka-only-server/actions/workflows/ci.yml)
+
 [aka-only-server](https://github.com/oyaguma3/aka-only-server) の管理 GUI（BFF + Web GUI）です。aka-only-server の管理API だけを使って、加入者、AVクライアント、証明書を管理し、ログと監査ログを確認します。加入者のデータや鍵情報は自分では保存しません。
 
 ```
@@ -76,6 +78,14 @@ WEBGUI_TEST_ADMIN_URL=https://<host>:9443/admin/v1 WEBGUI_TEST_ADMIN_CLIENT_CERT
 ```
 
 契約テストは、テスト用の加入者（IMSI が `00101` で始まるもの）と AVクライアントを作り、終わったら削除します。`WEBGUI_TEST_ADMIN_AV_CERT=1` を足すと、AV用サーバー証明書の差し替えと作り直しも試します（稼働中の AVクライアントに影響します）。
+
+GitHub Actions（`.github/workflows/ci.yml`）で、push と pull request のたびに次を実行します。
+
+| ジョブ | 内容 |
+|---|---|
+| テスト | gofmt の確認、`go vet`、race 検出つきのテスト（Valkey の結合テストを含む） |
+| イメージと compose の設定 | Docker イメージのビルド、compose の設定の検査（同一ホスト・別ホスト） |
+| 管理API との契約テスト | aka-only-server の main を起動して BFF を管理クライアントとして登録し、契約テストを実行する |
 
 同梱しているサードパーティのファイル:
 
