@@ -48,6 +48,16 @@ jobs:
         env:
           WEBGUI_TEST_VALKEY_ADDR: localhost:6379
         run: go test -race -count=1 ./...
+      - name: Valkey の結合テストが実行されたことの確認
+        env:
+          WEBGUI_TEST_VALKEY_ADDR: localhost:6379
+        run: |
+          # 接続先がなければ結合テストはスキップされ、テスト自体は成功してしまうので、別に確かめる。
+          go test -count=1 -v ./internal/store/ | tee store.log
+          if grep -q -- '--- SKIP' store.log; then
+            echo "Valkey の結合テストがスキップされました"
+            exit 1
+          fi
 
   docker:
     name: イメージと compose の設定
