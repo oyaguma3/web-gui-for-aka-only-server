@@ -4,7 +4,7 @@
 - 対象: BFF と Web GUI。
 - 関連: システム全体の構成と管理API は aka-only-server リポジトリの `docs/design-overview.md` を参照。
 
-既存の `README.md`、`USER_GUIDE.md` とコードは旧実装（Gin + HTMX + Alpine.js）のものであり、流用せず全面的に作り直す。
+旧実装（Gin + HTMX + Alpine.js）は流用せず、コードとドキュメントを削除したうえで全面的に作り直す。
 
 ## 1. 位置づけ
 

@@ -7,8 +7,14 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 ## 現在の状態
 
 - フェーズ3（BFF / Web GUI の実装）はこれから着手する。
-- リポジトリにある既存のコード（Gin + HTMX + Alpine.js、`main.go`、`internal/`、`assets/`、`webgui.env`、`README.md`、`USER_GUIDE.md`）は旧実装で、動作未確認のまま放置されていたもの。流用せず全面的に作り直すことで合意済み。
-- `docs/design-overview.md` は新しい設計で、まだコミットしていない。
+- 旧実装（Gin + HTMX + Alpine.js）は流用しない方針で、コード・README・ユーザーガイドごと削除済み。README は新しい実装に合わせて書き直す。
+- 作業はステップ単位で区切り、各ステップの終わりに「作ったもの」と「実際に動かして確かめたこと」を報告して確認をもらう。
+  1. 骨格（環境変数による設定、slog、HTTPS 終端と自己署名の自動生成、テンプレートと静的ファイルの配信）
+  2. 管理API クライアント（mTLS、`X-Operator-Id`、エラー処理）
+  3. アカウントとセッション（argon2id、ログイン試行の制限、BFF 監査ログ、権限チェック）
+  4. 画面（加入者 → AVクライアント → AV用サーバー証明書 → ログと監査ログ → アカウント管理 → ダッシュボード）
+  5. compose、aka-only-server との通しの確認、`docs/operation-guide.md`、`README.md`
+- `docs/screen-spec.md` は実装と並行して書く。最初の画面（加入者）ができた時点で書き起こし、画面ごとに追記する。
 - aka-only-server はフェーズ1（認証ベクターAPI）とフェーズ2（管理API）を実装済み。場所は `/home/sumitakekino/projects/aka-only-server`。
 
 ## 最初に読むもの
