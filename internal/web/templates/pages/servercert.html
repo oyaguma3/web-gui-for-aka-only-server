@@ -1,0 +1,46 @@
+{{define "content" -}}
+<h1>AV用サーバー証明書</h1>
+<p>認証ベクターAPI（mTLS）で aka-only-server が提示するサーバー証明書。AVクライアントには、この証明書を信頼する設定をします。</p>
+{{template "servercert-section" .Data}}
+{{- end}}
+
+{{define "servercert-section" -}}
+<div id="servercert">
+  {{if .Message}}<p class="notice-ok" role="status">{{.Message}}</p>{{end}}
+  {{if .Error}}<p class="notice-error" role="alert">{{.Error}}</p>{{end}}
+  {{with .Cert}}{{if .CertPEM -}}
+  <table>
+    <tbody>
+      <tr><th scope="row">種類</th><td>{{if eq .Source "uploaded"}}持ち込み{{else}}自己署名（自動生成）{{end}}</td></tr>
+      <tr><th scope="row">Subject</th><td>{{.Subject}}</td></tr>
+      <tr><th scope="row">有効期間</th><td>{{datetime .NotBefore}} 〜 {{datetime .NotAfter}}{{with expiry .NotAfter}} <mark class="{{.Class}}">{{.Label}}</mark>{{end}}</td></tr>
+      <tr><th scope="row">SHA-256 フィンガープリント</th><td><code class="wrap">{{.FingerprintSHA256}}</code></td></tr>
+      <tr><th scope="row">更新日時</th><td>{{datetime .UpdatedAt}}</td></tr>
+    </tbody>
+  </table>
+  <p><a href="/av-server-certificate.pem" role="button" class="secondary outline">証明書をダウンロード</a></p>
+  <details>
+    <summary>証明書（PEM）</summary>
+    <pre><code>{{.CertPEM}}</code></pre>
+  </details>
+  {{- end}}{{end}}
+
+  {{if .CanEdit -}}
+  <article>
+    <header><strong>持ち込みの証明書に差し替える</strong></header>
+    <p class="muted">再起動なしで、以後の新しい接続から使われます。秘密鍵は aka-only-server に保存され、この画面やログには出しません。</p>
+    <form hx-post="/av-server-certificate" hx-target="#servercert" hx-swap="outerHTML" hx-encoding="multipart/form-data" autocomplete="off">
+      {{template "cert-input" (certInput "cert" "サーバー証明書（PEM。中間証明書を続けてよい）" .CertPEM .Errors.cert)}}
+      {{template "cert-input" (certInput "key" "秘密鍵（PEM。暗号化していないもの）" "" .Errors.key)}}
+      <button type="submit">差し替える</button>
+    </form>
+  </article>
+  <article>
+    <header><strong>自己署名の証明書を作り直す</strong></header>
+    <p class="muted">登録した証明書を捨て、自己署名の証明書を作り直します。AVクライアントには新しい証明書を配り直す必要があります。</p>
+    <button type="button" class="contrast" hx-post="/av-server-certificate/reset" hx-target="#servercert" hx-swap="outerHTML"
+      hx-confirm="AV用サーバー証明書を自己署名で作り直します。AVクライアントの信頼設定をやり直す必要があります。よろしいですか？">作り直す</button>
+  </article>
+  {{- end}}
+</div>
+{{- end}}

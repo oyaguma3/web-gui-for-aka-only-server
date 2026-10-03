@@ -32,6 +32,7 @@ type Store interface {
 	ClearLoginFailures(ctx context.Context, userID string) error
 
 	AppendAudit(ctx context.Context, e store.AuditEntry, maxLen int64) error
+	ListAudit(ctx context.Context, before string, limit int) ([]store.AuditEntry, string, error)
 }
 
 // Options は Service の設定。
@@ -210,11 +211,21 @@ func (s *Service) Login(ctx context.Context, id, password string) (string, Accou
 // Authenticate はセッションID からアカウントを返し、セッションの有効期限を延ばす。
 // セッションがない、期限切れ、アカウントが削除された、パスワードが変わった場合は ErrNoSession を返す。
 func (s *Service) Authenticate(ctx context.Context, token string) (Account, error) {
+	return s.authenticate(ctx, token, s.opts.SessionIdleTimeout)
+}
+
+// AuthenticatePassive は Authenticate と同じだが、セッションの有効期限を延ばさない。
+// 画面の自動更新（ポーリング）に使い、開いたままの画面で無操作のタイムアウトが効かなくなるのを防ぐ。
+func (s *Service) AuthenticatePassive(ctx context.Context, token string) (Account, error) {
+	return s.authenticate(ctx, token, 0)
+}
+
+func (s *Service) authenticate(ctx context.Context, token string, extend time.Duration) (Account, error) {
 	if !validToken(token) {
 		return Account{}, ErrNoSession
 	}
 	idHash := tokenHash(token)
-	sess, err := s.store.GetSession(ctx, idHash, s.opts.SessionIdleTimeout)
+	sess, err := s.store.GetSession(ctx, idHash, extend)
 	if errors.Is(err, store.ErrNotFound) {
 		return Account{}, ErrNoSession
 	}
@@ -417,12 +428,21 @@ func newStamp() string {
 
 // ---- 監査ログ ----
 
+// ListAudit は BFF の監査ログを新しい順に返す。管理者だけが使える。
+// before が空でなければ、そのエントリより古いものを返す。さらに古いものがあれば、次の before を返す。
+func (s *Service) ListAudit(ctx context.Context, actor Account, before string, limit int) ([]store.AuditEntry, string, error) {
+	if !actor.IsAdmin() {
+		return nil, "", ErrForbidden
+	}
+	return s.store.ListAudit(ctx, before, limit)
+}
+
 // audit は BFF の監査ログを標準出力と Valkey の Stream に記録する。
 // 記録に失敗しても操作自体は成功として扱い、エラーをログに残す。
 func (s *Service) audit(ctx context.Context, actor, action, target string, detail map[string]any) {
 	e := store.AuditEntry{Actor: actor, Action: action, Target: target, Remote: remoteFrom(ctx)}
 	if detail != nil {
-		b, err := json.Marshal(detail)
+		b, err := json.Marshal(detail, json.Deterministic(true))
 		if err != nil {
 			s.log.Error("marshal audit detail", "action", action, "error", err)
 		}

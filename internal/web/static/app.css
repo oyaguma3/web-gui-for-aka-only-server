@@ -61,3 +61,73 @@ header nav form.logout button {
   width: 100%;
   margin: 0;
 }
+
+/* 16 進の値 */
+.mono,
+input.mono {
+  font-family: var(--pico-font-family-monospace);
+}
+
+/* ページ送り */
+.pager {
+  display: flex;
+  gap: 1rem;
+}
+
+/* 補足の文字。フォームの中では small の位置を Pico CSS がずらすので、こちらを使う。 */
+.muted {
+  color: var(--pico-muted-color);
+  font-size: 0.875em;
+}
+
+/* 証明書の期限 */
+mark.expired {
+  background-color: var(--pico-del-color);
+  color: var(--pico-primary-inverse);
+}
+mark.expiring {
+  background-color: var(--pico-mark-background-color);
+}
+
+/* 長い値（フィンガープリントなど）を折り返す */
+code.wrap {
+  word-break: break-all;
+}
+
+/* ログ */
+table.logs td,
+table.audit td {
+  font-size: 0.875rem;
+  vertical-align: top;
+}
+table.logs .level {
+  font-family: var(--pico-font-family-monospace);
+}
+tr.level-WARN .level {
+  color: var(--pico-mark-color);
+  background-color: var(--pico-mark-background-color);
+}
+tr.level-ERROR .level {
+  color: var(--pico-primary-inverse);
+  background-color: var(--pico-del-color);
+}
+form.inline {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 24rem;
+}
+
+/* タブ */
+nav.tabs a[aria-current="page"] {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+/* 画面幅が狭いときは、メニューの項目を折り返さずに並びごと次の行へ回す。 */
+header nav,
+header nav ul {
+  flex-wrap: wrap;
+}
+header nav li {
+  white-space: nowrap;
+}

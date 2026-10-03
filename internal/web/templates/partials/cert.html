@@ -1,0 +1,9 @@
+{{/* 証明書や秘密鍵の入力欄。貼り付けとファイルの選択のどちらでもよい（ファイルを優先する）。 */}}
+{{define "cert-input" -}}
+<fieldset>
+  <legend>{{.Label}}</legend>
+  <textarea name="{{.Name}}_pem" rows="5" spellcheck="false" class="mono" placeholder="-----BEGIN ...-----"{{if .Error}} aria-invalid="true"{{end}}>{{.Value}}</textarea>
+  <input type="file" name="{{.Name}}_file" accept=".pem,.crt,.cer,.key,text/plain" aria-label="{{.Label}}のファイル">
+  {{with .Error}}<span class="muted">{{.}}</span>{{end}}
+</fieldset>
+{{- end}}

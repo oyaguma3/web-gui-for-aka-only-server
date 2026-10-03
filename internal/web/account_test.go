@@ -5,13 +5,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-
-	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
 )
 
 func newAccountEnv(t *testing.T) *testEnv {
 	t.Helper()
-	return newTestEnv(t, &fakeAdmin{status: adminapi.Status{Version: "1.0.0"}})
+	return newTestEnv(t, newFakeAdmin())
 }
 
 func TestLoginRequired(t *testing.T) {

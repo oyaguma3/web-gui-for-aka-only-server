@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/valkey-io/valkey-go"
 )
 
 // セッションのキーには、Cookie に入れるセッションID そのものではなく、そのハッシュを使う（呼び出し側で計算する）。
@@ -40,14 +42,16 @@ func (s *Store) CreateSession(ctx context.Context, idHash string, sess Session, 
 	return nil
 }
 
-// GetSession はセッションを返し、有効期限を ttl だけ延ばす。なければ ErrNotFound を返す。
+// GetSession はセッションを返し、有効期限を ttl だけ延ばす。ttl が 0 以下なら延ばさない。
+// なければ ErrNotFound を返す。
 func (s *Store) GetSession(ctx context.Context, idHash string, ttl time.Duration) (Session, error) {
 	key := sessionKey(idHash)
-	res := s.c.DoMulti(ctx,
-		s.c.B().Hgetall().Key(key).Build(),
+	cmds := valkey.Commands{s.c.B().Hgetall().Key(key).Build()}
+	if ttl > 0 {
 		// 存在しないキーには何もしない。
-		s.c.B().Pexpire().Key(key).Milliseconds(ttl.Milliseconds()).Xx().Build(),
-	)
+		cmds = append(cmds, s.c.B().Pexpire().Key(key).Milliseconds(ttl.Milliseconds()).Xx().Build())
+	}
+	res := s.c.DoMulti(ctx, cmds...)
 	m, err := res[0].AsStrMap()
 	if err != nil {
 		return Session{}, fmt.Errorf("get session: %w", err)

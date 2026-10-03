@@ -1,0 +1,61 @@
+{{define "content" -}}
+<h1>AVクライアント</h1>
+<p>認証ベクターAPI を mTLS で使うクライアント。証明書のフィンガープリントで識別します。</p>
+{{template "avclients-section" .Data}}
+{{- end}}
+
+{{define "avclients-section" -}}
+<div id="avclients">
+  {{if .Message}}<p class="notice-ok" role="status">{{.Message}}</p>{{end}}
+  {{if .Error}}<p class="notice-error" role="alert">{{.Error}}</p>{{end}}
+  {{if .Clients -}}
+  <figure>
+    <table>
+      <thead>
+        <tr><th scope="col">ID</th><th scope="col">名前</th><th scope="col">状態</th><th scope="col">証明書の有効期限</th><th scope="col">Network Name</th><th scope="col">登録日時</th></tr>
+      </thead>
+      <tbody>
+        {{- range .Clients}}
+        <tr>
+          <td>{{.ID}}</td>
+          <td><a href="/av-clients/{{.ID}}">{{.Name}}</a></td>
+          <td>{{if .Enabled}}有効{{else}}<strong>無効</strong>{{end}}</td>
+          <td>{{datetime .NotAfter}}{{with expiry .NotAfter}} <mark class="{{.Class}}">{{.Label}}</mark>{{end}}</td>
+          <td>{{or .NetworkName "-"}}</td>
+          <td>{{datetime .CreatedAt}}</td>
+        </tr>
+        {{- end}}
+      </tbody>
+    </table>
+  </figure>
+  {{- else if not .Error -}}
+  <p>AVクライアントは登録されていません。</p>
+  {{- end}}
+
+  {{if .CanEdit -}}
+  <article>
+    <header><strong>AVクライアントの登録</strong></header>
+    <form hx-post="/av-clients" hx-target="#avclients" hx-swap="outerHTML" hx-encoding="multipart/form-data" autocomplete="off">
+      <div class="grid">
+        <label>
+          名前
+          <input name="name" value="{{.Form.Name}}" required maxlength="64"{{if .Form.Errors.name}} aria-invalid="true"{{end}}>
+          <span class="muted">{{or .Form.Errors.name "監査ログや加入者の画面に出す名前（64 バイトまで）"}}</span>
+        </label>
+        <label>
+          Network Name
+          <input name="network_name" value="{{.Form.NetworkName}}" maxlength="255" placeholder="WLAN"{{if .Form.Errors.network_name}} aria-invalid="true"{{end}}>
+          <span class="muted">{{or .Form.Errors.network_name "EAP-AKA' の鍵導出に使う。空なら WLAN"}}</span>
+        </label>
+      </div>
+      {{template "cert-input" (certInput "cert" "クライアント証明書（PEM）" .Form.CertPEM .Form.Errors.cert)}}
+      <label>
+        <input type="checkbox" role="switch" name="enabled"{{if .Form.Enabled}} checked{{end}}>
+        有効にする
+      </label>
+      <button type="submit">登録する</button>
+    </form>
+  </article>
+  {{- end}}
+</div>
+{{- end}}

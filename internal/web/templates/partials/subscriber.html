@@ -1,0 +1,21 @@
+{{/* 許可クライアントと平文HTTP の入力欄。登録と詳細で共通。 */}}
+{{define "subscriber-access-fields" -}}
+<fieldset>
+  <legend>許可クライアント</legend>
+  {{- range .Clients}}
+  <label>
+    <input type="checkbox" name="clients" value="{{.ID}}"{{if .Selected}} checked{{end}}>
+    {{.Name}} <span class="muted">#{{.ID}}{{if not .Enabled}}（無効）{{end}}</span>
+  </label>
+  {{- else}}
+  <small>AVクライアントが登録されていません。</small>
+  {{- end}}
+</fieldset>
+<fieldset>
+  <label>
+    <input type="checkbox" role="switch" name="allow_plain"{{if .AllowPlain}} checked{{end}}>
+    平文HTTP での払い出しを許可する
+  </label>
+  <small>平文HTTP では CK / IK が暗号化されずに流れます。同一ホスト内のクライアントに限って許可してください。</small>
+</fieldset>
+{{- end}}

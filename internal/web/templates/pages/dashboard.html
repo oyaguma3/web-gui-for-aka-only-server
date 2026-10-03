@@ -8,22 +8,36 @@
 {{- else -}}
 <div class="grid">
   <article>
-    <header>加入者</header>
+    <header><a href="/subscribers">加入者</a></header>
     <p class="metric">{{.Status.SubscriberCount}}</p>
   </article>
   <article>
-    <header>AVクライアント</header>
+    <header><a href="/av-clients">AVクライアント</a></header>
     <p class="metric">{{.Status.ClientCount}}</p>
   </article>
 </div>
+{{range .ExpiringClients -}}
+<p class="notice-warn" role="alert">AVクライアント <a href="/av-clients/{{.ID}}">{{.Name}}</a> の証明書の有効期限: {{datetime .NotAfter}}{{with expiry .NotAfter}} <mark class="{{.Class}}">{{.Label}}</mark>{{end}}</p>
+{{- end}}
 <table>
   <tbody>
     <tr><th scope="row">aka-only-server のバージョン</th><td>{{.Status.Version}}</td></tr>
     <tr><th scope="row">起動日時</th><td>{{datetime .Status.StartedAt}}</td></tr>
-    <tr><th scope="row">AV用サーバー証明書の有効期限</th><td>{{datetime .Status.AVServerCertificateNotAfter}}</td></tr>
+    <tr><th scope="row"><a href="/av-server-certificate">AV用サーバー証明書</a>の有効期限</th><td>{{datetime .Status.AVServerCertificateNotAfter}}{{with expiry .Status.AVServerCertificateNotAfter}} <mark class="{{.Class}}">{{.Label}}</mark>{{end}}</td></tr>
     <tr><th scope="row">認証ベクターAPI の平文HTTP</th><td>{{if .Status.AVPlainEnabled}}有効{{else}}無効{{end}}</td></tr>
   </tbody>
 </table>
+{{if .Logs -}}
+<h2>直近のログ</h2>
+<figure>
+  <table class="logs">
+    <tbody>
+      {{- range newestFirst .Logs}}{{template "log-row" .}}{{end}}
+    </tbody>
+  </table>
+</figure>
+<p><a href="/logs">ログをすべて見る</a></p>
+{{- end}}
 {{- end}}
 {{- end}}
 {{- end}}

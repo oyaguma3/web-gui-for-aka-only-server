@@ -127,7 +127,8 @@ func WithOperator(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, operatorKey{}, userID)
 }
 
-func operatorFrom(ctx context.Context) string {
+// OperatorFrom はコンテキストに入れた操作者のユーザーID を返す。
+func OperatorFrom(ctx context.Context) string {
 	id, _ := ctx.Value(operatorKey{}).(string)
 	return id
 }
@@ -237,7 +238,7 @@ func (c *Client) call[T any](ctx context.Context, req request) (T, error) {
 
 // send はリクエストを送り、2xx の応答を返す。それ以外の応答は *Error にして返す。
 func (c *Client) send(ctx context.Context, req request) (*http.Response, error) {
-	op := operatorFrom(ctx)
+	op := OperatorFrom(ctx)
 	switch {
 	case op != "" && !operatorPattern.MatchString(op):
 		return nil, ErrInvalidOperator

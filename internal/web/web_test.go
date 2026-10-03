@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,20 +18,18 @@ import (
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/auth/authtest"
 )
 
-// fakeAdmin は管理API の代わり。
-type fakeAdmin struct {
-	status adminapi.Status
-	err    error
-}
-
-func (f *fakeAdmin) Status(context.Context) (adminapi.Status, error) { return f.status, f.err }
-
 const (
 	ownerID = "root"
 	ownerPW = "owner-password-123"
 )
 
-var discard = slog.New(slog.NewTextHandler(io.Discard, nil))
+// discard はテストのログ。WEBGUI_TEST_LOG=1 なら標準エラーに出す（テンプレートの誤りなどを調べるとき）。
+var discard = func() *slog.Logger {
+	if os.Getenv("WEBGUI_TEST_LOG") == "1" {
+		return slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}()
 
 // testEnv は画面のテスト環境。認証は本物の auth.Service をメモリ上のストアで動かす。
 type testEnv struct {
@@ -42,7 +40,7 @@ type testEnv struct {
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newTestEnv(t, &fakeAdmin{status: adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3}}).h
+	return newTestEnv(t, fakeWithStatus(adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3})).h
 }
 
 func newTestEnv(t *testing.T, admin AdminAPI) *testEnv {
@@ -109,7 +107,7 @@ func (e *testEnv) loginAs(t *testing.T, id, pw string) *http.Cookie {
 }
 
 func TestDashboard(t *testing.T) {
-	env := newTestEnv(t, &fakeAdmin{status: adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3}})
+	env := newTestEnv(t, fakeWithStatus(adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3}))
 	w := do(env.h, request("GET", "/", env.loginAs(t, ownerID, ownerPW), nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
@@ -217,7 +215,7 @@ func TestDashboardAdminError(t *testing.T) {
 			want: "管理API がエラーを返しました。",
 		},
 	} {
-		env := newTestEnv(t, &fakeAdmin{err: tc.err})
+		env := newTestEnv(t, fakeWithErr(tc.err))
 		w := do(env.h, request("GET", "/", env.loginAs(t, ownerID, ownerPW), nil))
 		// 管理API に届かなくても画面自体は返す。
 		if w.Code != http.StatusOK {

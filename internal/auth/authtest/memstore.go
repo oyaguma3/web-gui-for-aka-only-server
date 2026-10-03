@@ -5,6 +5,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -133,4 +134,29 @@ func (m *MemStore) LastAudit() store.AuditEntry {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.Audit[len(m.Audit)-1]
+}
+
+// ListAudit は監査ログを新しい順に返す。エントリID は記録順の連番（"1", "2", ...）とする。
+func (m *MemStore) ListAudit(_ context.Context, before string, limit int) ([]store.AuditEntry, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	end := len(m.Audit)
+	if before != "" {
+		n, err := strconv.Atoi(before)
+		if err != nil {
+			return nil, "", err
+		}
+		end = n - 1
+	}
+	var out []store.AuditEntry
+	for i := end - 1; i >= 0 && len(out) < limit; i-- {
+		e := m.Audit[i]
+		e.ID = strconv.Itoa(i + 1)
+		out = append(out, e)
+	}
+	next := ""
+	if len(out) == limit && end-limit > 0 {
+		next = out[len(out)-1].ID
+	}
+	return out, next, nil
 }

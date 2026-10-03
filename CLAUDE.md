@@ -12,9 +12,9 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
   1. 骨格（環境変数による設定、slog、HTTPS 終端と自己署名の自動生成、テンプレートと静的ファイルの配信）… 実装済み
   2. 管理API クライアント（mTLS、`X-Operator-Id`、エラー処理）… 実装済み。simwifi での確認のため Dockerfile と compose.yaml（BFF のみ）も先に作った。Valkey はステップ3で加える
   3. アカウントとセッション（argon2id、ログイン試行の制限、BFF 監査ログ、権限チェック）… 実装済み。アカウントの作成を確かめるため、ログイン・パスワード変更・アカウント管理の画面もこのステップで作った
-  4. 画面（加入者 → AVクライアント → AV用サーバー証明書 → ログと監査ログ → ダッシュボード）
+  4. 画面（加入者 → AVクライアント → AV用サーバー証明書 → ログと監査ログ → ダッシュボード）… 実装済み
   5. compose、aka-only-server との通しの確認、`docs/operation-guide.md`、`README.md`
-- `docs/screen-spec.md` は実装と並行して書く。ステップ3で共通部分・ログイン・パスワード変更・アカウント管理を書き起こした。画面ごとに追記する。
+- `docs/screen-spec.md` は実装と並行して書く。ステップ4までの全画面を記載済み。画面を変えたら合わせて直す。
 - aka-only-server はフェーズ1（認証ベクターAPI）とフェーズ2（管理API）を実装済み。場所は `/home/sumitakekino/projects/aka-only-server`。
 
 ## 最初に読むもの
@@ -66,6 +66,8 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 - 通しの確認は、compose を別のプロジェクト名（`-p`）と専用の `.env`、ループバックの別ポートで起動して行い、終わったらコンテナ・ボリューム・イメージを片付ける。
 - 実装した内容は、テストが通るだけでなく、実際に起動して操作して確かめる。確かめていない点は報告に明記する。
 - ドキュメントに載せる手順（コマンド）は、実際に試してから載せる。
+
+- htmx の振る舞い（4xx の差し替え、表の要素の out-of-band、確認ダイアログなど）は Go の単体テストでは確かめられない。画面を変えたら、ブラウザ（playwright-cli）で実際に操作して確かめる。
 
 ### 検証用の実機（simwifi）
 

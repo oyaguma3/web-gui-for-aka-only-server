@@ -2,23 +2,68 @@ package web
 
 import (
 	"bytes"
+	"cmp"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"net/http"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/auth"
 )
 
 // pages はページ名（templates/pages/ のファイル名から拡張子を除いたもの）ごとのテンプレート。
 // 各ページは templates/layout.html の "layout" を実行し、ページ側で "content" を定義する。
+// ページごとに別々に解析するので、ページのファイルで定義したテンプレートは他のページからは使えない。
 type pages map[string]*template.Template
 
 // funcs はテンプレートで使う関数。
 var funcs = template.FuncMap{
+	// expiry は証明書の有効期限の状態を返す。期限切れと 30 日以内を目立たせる。問題がなければ nil
+	// （テンプレートの with は、中身が空の構造体でも真として扱うので、ポインターで返す）。
+	"expiry": func(notAfter time.Time) *expiryState {
+		switch d := time.Until(notAfter); {
+		case notAfter.IsZero():
+			return nil
+		case d <= 0:
+			return &expiryState{Class: "expired", Label: "期限切れ"}
+		case d <= 30*24*time.Hour:
+			return &expiryState{Class: "expiring", Label: fmt.Sprintf("あと %d 日", int(d.Hours()/24))}
+		}
+		return nil
+	},
+	// short はフィンガープリントなどの長い値を先頭だけにする。
+	"short": func(s string) string {
+		if len(s) <= 16 {
+			return s
+		}
+		return s[:16] + "…"
+	},
+	// attrs はログの属性を key=value の並びにする。
+	"attrs": formatAttrs,
+	// newestFirst はログを新しい順に並べ替える。
+	"newestFirst": func(items []adminapi.LogEntry) []adminapi.LogEntry {
+		out := slices.Clone(items)
+		slices.Reverse(out)
+		return out
+	},
+	// actionLabel は監査ログの操作の名前を返す。
+	"actionLabel": func(action string) string { return cmp.Or(auditActionLabels[action], action) },
+	// certInput は証明書や秘密鍵の入力欄（partials/cert.html）に渡す値を作る。
+	"certInput": func(name, label, value, errMsg string) certInputData {
+		return certInputData{Name: name, Label: label, Value: value, Error: errMsg}
+	},
+	// keysPlaceholder は、Ki / OPc をまだ表示していない状態の値を作る。
+	"keysPlaceholder": func(imsi string) keysData { return keysData{IMSI: imsi} },
+	// accessFields は、詳細の画面で許可クライアントと平文HTTP の入力欄に渡す値を作る。
+	"accessFields": func(d subscriberData) subscriberForm {
+		return subscriberForm{Clients: d.Clients, AllowPlain: d.Sub.AllowPlain}
+	},
 	// minPasswordLen はパスワードの最小文字数。入力欄の制限と説明に使う。
 	"minPasswordLen": func() int { return auth.MinPasswordLen },
 	// datetime は日時を BFF のタイムゾーン（環境変数 TZ）で表示する。
@@ -31,7 +76,10 @@ var funcs = template.FuncMap{
 }
 
 func parsePages() (pages, error) {
-	base, err := template.New("layout.html").Funcs(funcs).ParseFS(assets, "templates/layout.html")
+	// 共通の部品（templates/partials/）は全てのページで使える。
+	// missingkey=zero: 入力の誤り（fieldErrors）のように、マップにない項目を空文字列として扱う。
+	base, err := template.New("layout.html").Funcs(funcs).Option("missingkey=zero").
+		ParseFS(assets, "templates/layout.html", "templates/partials/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +96,17 @@ func parsePages() (pages, error) {
 		p[strings.TrimSuffix(path.Base(file), ".html")] = t
 	}
 	return p, nil
+}
+
+// certInputData は証明書や秘密鍵の入力欄に渡す値。
+type certInputData struct {
+	Name, Label, Value, Error string
+}
+
+// expiryState は証明書の有効期限の状態。
+type expiryState struct {
+	Class string // expired / expiring
+	Label string
 }
 
 // view はテンプレートに渡す値。

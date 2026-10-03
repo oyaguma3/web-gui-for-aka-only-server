@@ -1,0 +1,63 @@
+{{define "content" -}}
+<nav aria-label="breadcrumb"><ul><li><a href="/av-clients">AVクライアント</a></li><li>{{.Data.Client.Name}}</li></ul></nav>
+{{template "avclient-detail" .Data}}
+{{- end}}
+
+{{define "avclient-detail" -}}
+<div id="avclient">
+  <h1>{{.Client.Name}} <small class="muted">#{{.Client.ID}}</small></h1>
+  {{if .Message}}<p class="notice-ok" role="status">{{.Message}}</p>{{end}}
+  {{if .Error}}<p class="notice-error" role="alert">{{.Error}}</p>{{end}}
+  <table>
+    <tbody>
+      <tr><th scope="row">状態</th><td>{{if .Client.Enabled}}有効{{else}}<strong>無効</strong>（接続を拒否します）{{end}}</td></tr>
+      <tr><th scope="row">Network Name</th><td>{{or .Client.NetworkName "（既定の WLAN）"}}</td></tr>
+      <tr><th scope="row">Subject</th><td>{{.Client.Subject}}</td></tr>
+      <tr><th scope="row">有効期間</th><td>{{datetime .Client.NotBefore}} 〜 {{datetime .Client.NotAfter}}{{with expiry .Client.NotAfter}} <mark class="{{.Class}}">{{.Label}}</mark>{{end}}</td></tr>
+      <tr><th scope="row">SHA-256 フィンガープリント</th><td><code class="wrap">{{.Client.FingerprintSHA256}}</code></td></tr>
+      <tr><th scope="row">登録日時</th><td>{{datetime .Client.CreatedAt}}</td></tr>
+    </tbody>
+  </table>
+  <details>
+    <summary>証明書（PEM）</summary>
+    <pre><code>{{.Client.CertPEM}}</code></pre>
+  </details>
+
+  {{if .CanEdit -}}
+  <article>
+    <header><strong>設定の変更</strong></header>
+    <form hx-post="/av-clients/{{.Client.ID}}/update" hx-target="#avclient" hx-swap="outerHTML">
+      <div class="grid">
+        <label>
+          名前
+          <input name="name" value="{{.Form.Name}}" required maxlength="64"{{if .Errors.name}} aria-invalid="true"{{end}}>
+          {{with .Errors.name}}<span class="muted">{{.}}</span>{{end}}
+        </label>
+        <label>
+          Network Name
+          <input name="network_name" value="{{.Form.NetworkName}}" maxlength="255" placeholder="WLAN"{{if .Errors.network_name}} aria-invalid="true"{{end}}>
+          {{with .Errors.network_name}}<span class="muted">{{.}}</span>{{end}}
+        </label>
+      </div>
+      <label>
+        <input type="checkbox" role="switch" name="enabled"{{if .Client.Enabled}} checked{{end}}>
+        有効（無効にすると、このクライアントからの接続をすぐに拒否します）
+      </label>
+      <button type="submit">変更する</button>
+    </form>
+  </article>
+
+  <article>
+    <header><strong>証明書の差し替え</strong></header>
+    <p class="muted">クライアントID を変えずに証明書だけを差し替えます。加入者の許可クライアントの設定はそのまま使えます。差し替えた時点で、古い証明書では接続できなくなります。</p>
+    <form hx-post="/av-clients/{{.Client.ID}}/certificate" hx-target="#avclient" hx-swap="outerHTML" hx-encoding="multipart/form-data">
+      {{template "cert-input" (certInput "cert" "新しいクライアント証明書（PEM）" "" .Errors.cert)}}
+      <button type="submit" class="secondary">差し替える</button>
+    </form>
+  </article>
+
+  <button type="button" class="contrast" hx-post="/av-clients/{{.Client.ID}}/delete" hx-target="#avclient" hx-swap="outerHTML"
+    hx-confirm="AVクライアント {{.Client.Name}}（#{{.Client.ID}}）を削除します。このクライアントはすぐに接続できなくなり、各加入者の許可クライアントからも外れます。よろしいですか？">このクライアントを削除</button>
+  {{- end}}
+</div>
+{{- end}}

@@ -102,6 +102,13 @@ func TestSessions(t *testing.T) {
 	if err != nil || ttl <= 60_000 {
 		t.Errorf("ttl after get = %d, %v", ttl, err)
 	}
+	// ttl が 0 なら延ばさない。
+	if _, err := s.GetSession(ctx, "h1", 0); err != nil {
+		t.Fatal(err)
+	}
+	if ttl2, _ := s.c.Do(ctx, s.c.B().Pttl().Key(sessionKey("h1")).Build()).AsInt64(); ttl2 > ttl {
+		t.Errorf("ttl after passive get = %d (before %d)", ttl2, ttl)
+	}
 	if _, err := s.GetSession(ctx, "missing", time.Minute); !errors.Is(err, ErrNotFound) {
 		t.Errorf("get missing: err = %v", err)
 	}

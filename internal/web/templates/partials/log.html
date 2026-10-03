@@ -1,0 +1,4 @@
+{{/* ログの 1 行。ログの画面とダッシュボードで共通。 */}}
+{{define "log-row" -}}
+<tr class="level-{{.Level}}"><td>{{datetime .Time}}</td><td><span class="level">{{.Level}}</span></td><td>{{.Msg}}</td><td><code class="wrap">{{attrs .Attrs}}</code></td></tr>
+{{- end}}

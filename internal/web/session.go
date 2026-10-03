@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -76,6 +78,11 @@ func (h *Handler) authedForPasswordChange(fn http.HandlerFunc) http.Handler {
 	return h.session(fn, true)
 }
 
+// authedPassive はログインを必須にするが、セッションの有効期限は延ばさない。画面の自動更新（ポーリング）に使う。
+func (h *Handler) authedPassive(fn http.HandlerFunc) http.Handler {
+	return h.sessionWith(fn, false, h.auth.AuthenticatePassive)
+}
+
 // adminOnly はログインを必須にし、管理者（最初の管理者を含む）以外は 403 を返す。
 func (h *Handler) adminOnly(fn http.HandlerFunc) http.Handler {
 	return h.authed(func(w http.ResponseWriter, r *http.Request) {
@@ -88,8 +95,13 @@ func (h *Handler) adminOnly(fn http.HandlerFunc) http.Handler {
 }
 
 func (h *Handler) session(fn http.HandlerFunc, allowMustChange bool) http.Handler {
+	return h.sessionWith(fn, allowMustChange, h.auth.Authenticate)
+}
+
+func (h *Handler) sessionWith(fn http.HandlerFunc, allowMustChange bool,
+	authenticate func(context.Context, string) (auth.Account, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		acct, err := h.auth.Authenticate(r.Context(), sessionToken(r))
+		acct, err := authenticate(r.Context(), sessionToken(r))
 		if errors.Is(err, auth.ErrNoSession) {
 			clearSessionCookie(w)
 			h.redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusUnauthorized)
@@ -130,6 +142,16 @@ func (h *Handler) redirect(w http.ResponseWriter, r *http.Request, to string, st
 	})
 }
 
+// seeOther は操作の完了後に別の画面へ移動させる。htmx のリクエストには HX-Redirect、それ以外には 303 を返す。
+func seeOther(w http.ResponseWriter, r *http.Request, to string) {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", to)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, to, http.StatusSeeOther)
+}
+
 // safeNext は、ログイン後の移動先として安全なパス（同じサイトの絶対パス）を返す。
 // 別のサイトへ移動させる値（//example.com など）は使わない。
 func safeNext(next string) string {
@@ -140,8 +162,28 @@ func safeNext(next string) string {
 	return next
 }
 
-// parseForm はフォームを読む。大きすぎるボディは拒否する。
+// parseForm はフォーム（multipart/form-data を含む）を読む。大きすぎるボディは拒否する。
 func parseForm(w http.ResponseWriter, r *http.Request) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" {
+		// 上限は MaxBytesReader で掛けているので、全てメモリに置く。
+		return r.ParseMultipartForm(maxFormBytes)
+	}
 	return r.ParseForm()
+}
+
+// pemFromForm は、ファイルの項目（fileField）が選ばれていればその内容を、なければテキストの項目（textField）を返す。
+func pemFromForm(r *http.Request, textField, fileField string) (string, error) {
+	if r.MultipartForm != nil {
+		if files := r.MultipartForm.File[fileField]; len(files) > 0 && files[0].Size > 0 {
+			f, err := files[0].Open()
+			if err != nil {
+				return "", err
+			}
+			defer f.Close()
+			b, err := io.ReadAll(io.LimitReader(f, maxFormBytes))
+			return string(b), err
+		}
+	}
+	return strings.TrimSpace(r.PostFormValue(textField)), nil
 }

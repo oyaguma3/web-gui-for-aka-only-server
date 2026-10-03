@@ -1,0 +1,42 @@
+{{define "content" -}}
+{{with .Data -}}
+<hgroup>
+  <h1>ログ</h1>
+  <p>aka-only-server のサーバーログ（直近の {{len .Items}} 件、新しい順）。5 秒ごとに追記します。</p>
+</hgroup>
+{{if .Error}}<p class="notice-error" role="alert">{{.Error}}</p>{{end}}
+<form method="get" action="/logs" class="inline">
+  <select name="level" aria-label="表示するレベル">
+    {{- range .Levels}}
+    <option value="{{.Value}}"{{if eq .Value $.Data.Level}} selected{{end}}>{{.Label}}</option>
+    {{- end}}
+  </select>
+  <button type="submit" class="secondary">絞り込む</button>
+</form>
+{{if .BootID -}}
+{{template "logs-poller" .}}
+<figure>
+  <table class="logs">
+    <thead><tr><th scope="col">日時</th><th scope="col">レベル</th><th scope="col">メッセージ</th><th scope="col">属性</th></tr></thead>
+    <tbody id="log-rows">
+      {{- range newestFirst .Items}}{{template "log-row" .}}{{end}}
+    </tbody>
+  </table>
+</figure>
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{/* 続きのログを取りに行く要素。応答で自身を置き換え、取得位置（after）を進める。 */}}
+{{define "logs-poller" -}}
+<div id="log-poller" hx-get="/logs/tail?after={{.LastSeq}}&amp;boot={{.BootID}}&amp;level={{.Level}}" hx-trigger="every 5s" hx-swap="outerHTML">
+  {{- if .Error}}<p class="notice-error" role="alert">続きのログを取得できません: {{.Error}}</p>{{end -}}
+</div>
+{{- end}}
+
+{{/* /logs/tail の応答。新しいログを一覧の先頭に差し込む（out-of-band）。
+     tbody は表の外に単独では置けず、HTML の解析で捨てられるので、template で包む。 */}}
+{{define "logs-tail" -}}
+{{template "logs-poller" .}}
+{{if .Items}}<template><tbody hx-swap-oob="afterbegin:#log-rows">{{range newestFirst .Items}}{{template "log-row" .}}{{end}}</tbody></template>{{end}}
+{{- end}}
