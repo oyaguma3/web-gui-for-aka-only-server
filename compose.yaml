@@ -38,7 +38,6 @@ services:
       - "${WEBGUI_PUBLISH:-127.0.0.1:8444}:8443"
     networks:
       - default
-      - aka-av
 
   valkey:
     image: valkey/valkey:9
@@ -49,7 +48,6 @@ services:
       VALKEY_PASSWORD: ${VALKEY_PASSWORD}
     volumes:
       - valkey-data:/data
-    # 共有ネットワーク（aka-av）には出さない。
     networks:
       - default
     healthcheck:
@@ -57,12 +55,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-networks:
-  # aka-only-server の compose が作る共有ネットワーク。ホスト名 aka-only-server で管理API に接続する。
-  aka-av:
-    external: true
-    name: ${AKA_SHARED_NETWORK:-aka-av}
 
 volumes:
   webgui-data:

@@ -6,15 +6,15 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 
 ## 現在の状態
 
-- フェーズ3（BFF / Web GUI の実装）はこれから着手する。
-- 旧実装（Gin + HTMX + Alpine.js）は流用しない方針で、コード・README・ユーザーガイドごと削除済み。README は新しい実装に合わせて書き直す。
+- フェーズ3（BFF / Web GUI）はステップ1〜5まで実装・確認済み（2026-10-04）。
+  1. 骨格（環境変数による設定、slog、HTTPS 終端と自己署名の自動生成、テンプレートと静的ファイルの配信）
+  2. 管理API クライアント（mTLS、`X-Operator-Id`、エラー処理、`check-admin`）
+  3. アカウントとセッション（argon2id、ログイン試行の制限、BFF 監査ログ、権限チェック、ログイン・パスワード変更・アカウント管理の画面）
+  4. 画面（加入者、AVクライアント、AV用サーバー証明書、ログ、監査ログ、ダッシュボード）
+  5. compose の仕上げ（同一ホスト / 別ホストを `COMPOSE_FILE` で切り替え）、運用ガイド、README、通しの確認
 - 作業はステップ単位で区切り、各ステップの終わりに「作ったもの」と「実際に動かして確かめたこと」を報告して確認をもらう。
-  1. 骨格（環境変数による設定、slog、HTTPS 終端と自己署名の自動生成、テンプレートと静的ファイルの配信）… 実装済み
-  2. 管理API クライアント（mTLS、`X-Operator-Id`、エラー処理）… 実装済み。simwifi での確認のため Dockerfile と compose.yaml（BFF のみ）も先に作った。Valkey はステップ3で加える
-  3. アカウントとセッション（argon2id、ログイン試行の制限、BFF 監査ログ、権限チェック）… 実装済み。アカウントの作成を確かめるため、ログイン・パスワード変更・アカウント管理の画面もこのステップで作った
-  4. 画面（加入者 → AVクライアント → AV用サーバー証明書 → ログと監査ログ → ダッシュボード）… 実装済み
-  5. compose、aka-only-server との通しの確認、`docs/operation-guide.md`、`README.md`
-- `docs/screen-spec.md` は実装と並行して書く。ステップ4までの全画面を記載済み。画面を変えたら合わせて直す。
+- `docs/screen-spec.md` は全画面を記載済み。画面を変えたら合わせて直す。
+- 旧実装（Gin + HTMX + Alpine.js）は削除済み。
 - aka-only-server はフェーズ1（認証ベクターAPI）とフェーズ2（管理API）を実装済み。場所は `/home/sumitakekino/projects/aka-only-server`。
 
 ## 最初に読むもの
@@ -22,6 +22,8 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 | ファイル | 内容 |
 |---|---|
 | `docs/design-overview.md` | このリポジトリの設計。アカウントと権限、画面、データモデル |
+| `docs/screen-spec.md` | 画面仕様と権限ごとの表示差 |
+| `docs/operation-guide.md` | 導入と運用の手順（手順は simwifi で実行して確かめたもの） |
 | `../aka-only-server/docs/openapi/admin-api.yaml` | 管理API の仕様。BFF とサーバーの間の契約 |
 | `../aka-only-server/docs/operation-guide.md` | 管理クライアントの登録、共有ネットワーク、証明書の扱い |
 | `../aka-only-server/docs/design-overview.md` | システム全体の設計 |
@@ -75,7 +77,7 @@ VPN 越しのアクセス、`tailscale cert`、Docker での動作、同一ホ�
 
 - 接続は `ssh simwifi`（ユーザー `claude`、sudo はパスワード不要）。Debian 13、x86_64。
 - Tailscale のアドレスは `100.126.128.93`、名前は `venus1001.tail5ec249.ts.net`。tailnet の HTTPS 証明書は有効にしてある。手元の WSL も同じ tailnet にいる。
-- ホスト OS の DNS との競合を避けるため、tailnet の MagicDNS は有効のまま、各端末で `tailscale set --accept-dns=false` にする（simwifi は設定済み）。OS では `*.ts.net` の名前を引けないので、検証では IP アドレスで接続するか、curl の `--resolve` を使う。
+- ホスト OS の DNS との競合を避けるため、tailnet の MagicDNS は有効のまま、各端末で `tailscale set --accept-dns=false` にする（simwifi と手元の WSL は設定済み）。OS では `*.ts.net` の名前を引けないので、検証では IP アドレスで接続するか、curl の `--resolve` を使う。
 - `sudo tailscale cert --cert-file <cert> --key-file <key> venus1001.tail5ec249.ts.net` で Let's Encrypt の証明書を取り出せる（発行済みで tailscaled にキャッシュされている。出力ファイルは root 所有になるので chown する）。Let's Encrypt の発行回数制限があるので、キャッシュを消さない。
 - 作業は `~/aka-work/` の中だけで行う。`~/simwifi` は別アプリの開発で使っていたものなので触れない。
 - ソースは tar を ssh で流して転送する（GitHub への push は不要）。コミット済みのものは `git archive`、コミット前の作業ツリーは `git ls-files -co --exclude-standard -z | tar -c --null -T -` で送る。

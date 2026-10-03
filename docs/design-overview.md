@@ -1,6 +1,6 @@
 # web-gui-for-aka-only-server 設計概要
 
-- 状態: ドラフト（2026-10-03 時点の検討結果）
+- 状態: フェーズ3 の実装に合わせて更新済み（2026-10-04）
 - 対象: BFF と Web GUI。
 - 関連: システム全体の構成と管理API は aka-only-server リポジトリの `docs/design-overview.md` を参照。
 
@@ -28,7 +28,7 @@ aka-only-server の管理 GUI 実装の1つ。aka-only-server の管理API だ�
 - 外部依存は `github.com/valkey-io/valkey-go`（Valkey クライアント）と `golang.org/x/crypto`（argon2id）に限る。
 - module パス: `github.com/oyaguma3/web-gui-for-aka-only-server`
 - コマンド名は `aka-webgui`。設定は環境変数だけで受け取り、名前の接頭辞は `WEBGUI_` とする。
-- 配備: Docker Compose（BFF + 専用 Valkey）。
+- 配備: Docker Compose（BFF + 専用 Valkey）。aka-only-server と同一ホストなら `compose.aka-av.yaml` を重ねて共有ネットワークに参加し、別ホストなら `compose.yaml` だけで動かす（`.env` の `COMPOSE_FILE` で選ぶ）。
 
 ## 3. ブラウザ向けの HTTPS とネットワーク
 
@@ -152,10 +152,10 @@ aka-only-server の管理 GUI 実装の1つ。aka-only-server の管理API だ�
 - アカウントの作成・削除・パスワードの置き換えは Lua スクリプトで原子的に行う。
 - Valkey は AOF を 1 秒ごとに同期する。共有ネットワーク（aka-av）には参加させない。
 
-## 9. 作成予定のドキュメント
+## 9. ドキュメント
 
 | ファイル | 内容 |
 |---|---|
 | `docs/design-overview.md` | 本書 |
 | `docs/screen-spec.md` | 画面仕様と権限ごとの表示差 |
-| `docs/operation-guide.md` | 導入、アカウント運用。ブラウザ向け HTTPS の運用補助情報（Tailscale / WireGuard ごとの証明書の用意、Docker の公開ポートと ufw の関係、バインド先の限定）も記載する |
+| `docs/operation-guide.md` | 導入、アカウント運用、ブラウザ向け HTTPS の運用（自己署名、Tailscale の証明書と更新）、公開範囲、バックアップ、障害時の確認、環境変数 |
