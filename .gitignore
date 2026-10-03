@@ -1,0 +1,2 @@
+# ローカルのパスを含むので共有しない
+.claude/settings.json
