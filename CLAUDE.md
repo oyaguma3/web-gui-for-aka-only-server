@@ -75,12 +75,14 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 
 VPN 越しのアクセス、`tailscale cert`、Docker での動作、同一ホスト・別ホストでの aka-only-server との接続は、実機の simwifi で確かめる。単体テストと Valkey の結合テストは手元（WSL）で行う。手元の Docker では別プロジェクトのコンテナが動いているので、通しの確認には使わない。
 
-- 接続は `ssh simwifi`（ユーザー `claude`、sudo はパスワード不要）。Debian 13、x86_64。
+- 接続は `ssh simwifi`（ユーザー `claude`、sudo はパスワード不要）。Debian 13、x86_64。Docker Engine（公式リポジトリ）と compose プラグイン、git を導入済み（`claude` は `docker` グループに所属）。
 - Tailscale のアドレスは `100.126.128.93`、名前は `venus1001.tail5ec249.ts.net`。tailnet の HTTPS 証明書は有効にしてある。手元の WSL も同じ tailnet にいる。
 - ホスト OS の DNS との競合を避けるため、tailnet の MagicDNS は有効のまま、各端末で `tailscale set --accept-dns=false` にする（simwifi と手元の WSL は設定済み）。OS では `*.ts.net` の名前を引けないので、検証では IP アドレスで接続するか、curl の `--resolve` を使う。
 - `sudo tailscale cert --cert-file <cert> --key-file <key> venus1001.tail5ec249.ts.net` で Let's Encrypt の証明書を取り出せる（発行済みで tailscaled にキャッシュされている。出力ファイルは root 所有になるので chown する）。Let's Encrypt の発行回数制限があるので、キャッシュを消さない。
 - 作業は `~/aka-work/` の中だけで行う。`~/simwifi` は別アプリの開発で使っていたものなので触れない。
-- ソースは tar を ssh で流して転送する（GitHub への push は不要）。コミット済みのものは `git archive`、コミット前の作業ツリーは `git ls-files -co --exclude-standard -z | tar -c --null -T -` で送る。
+- ソースの取得:
+  - push 済みの版は、simwifi で GitHub から `git clone` する（両リポジトリとも公開）。運用ガイドの手順（`git pull` による更新を含む）を確かめるときはこちらを使う。古い版からの更新は、clone してから `git reset --hard <古いコミット>` して起動し、`git pull` で再現できる。
+  - push 前の版は、tar を ssh で流して転送する。コミット済みのものは `git archive`、コミット前の作業ツリーは `git ls-files -co --exclude-standard -z | tar -c --null -T -` で送る。
 - ファイアウォールがなく、同じ LAN（`192.168.40.0/24`）からも届く。検証中の待ち受けは Tailscale のアドレスかループバックに限る。
 - 確認が終わったら、コンテナ・ボリューム・イメージ・作業ファイルを片付ける。
 
