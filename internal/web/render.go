@@ -8,14 +8,26 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // pages はページ名（templates/pages/ のファイル名から拡張子を除いたもの）ごとのテンプレート。
 // 各ページは templates/layout.html の "layout" を実行し、ページ側で "content" を定義する。
 type pages map[string]*template.Template
 
+// funcs はテンプレートで使う関数。
+var funcs = template.FuncMap{
+	// datetime は日時を BFF のタイムゾーン（環境変数 TZ）で表示する。
+	"datetime": func(t time.Time) string {
+		if t.IsZero() {
+			return "-"
+		}
+		return t.Local().Format("2006-01-02 15:04:05 MST")
+	},
+}
+
 func parsePages() (pages, error) {
-	base, err := template.ParseFS(assets, "templates/layout.html")
+	base, err := template.New("layout.html").Funcs(funcs).ParseFS(assets, "templates/layout.html")
 	if err != nil {
 		return nil, err
 	}

@@ -112,9 +112,16 @@ aka-only-server の管理 GUI 実装の1つ。aka-only-server の管理API だ�
 
 - aka-only-server の `docs/openapi/admin-api.yaml` を契約とする。
 - 接続先 URL、BFF のクライアント証明書と秘密鍵、管理API のサーバー証明書（検証用）を設定で与える。
+  - クライアント証明書は、aka-only-server の `client gen-cert` の出力（証明書と秘密鍵を 1 つの PEM にまとめたもの）をそのまま使える。秘密鍵を別ファイルで渡すこともできる。
+  - 管理API のサーバー証明書は、aka-only-server の `admin-cert` で取り出したものを、信頼する証明書として検証に使う。ホスト名の検証も行うので、接続先のホスト名または IP アドレスがサーバー証明書の SAN（aka-only-server 側の `AKA_ADMIN_TLS_HOSTS`）に入っている必要がある。
 - BFF のクライアント証明書は、フィンガープリントを aka-only-server 側の `.env`（`AKA_ADMIN_CLIENTS`）に書いて登録する。
 - 同一ホストで動かす場合は、aka-only-server が作る共有の Docker ネットワークに参加し、`https://aka-only-server:9443` で接続する。別ホストの場合は、aka-only-server 側で管理API の公開先アドレスを変える。
 - 手順は aka-only-server の `docs/operation-guide.md` を参照。
+- 操作者のユーザーID は、リクエストのコンテキストに入れておき、管理API クライアントが `X-Operator-Id` ヘッダーで渡す。変更操作と Ki / OPc の取得は、操作者が入っていなければ管理API に送らない（監査ログに操作者のない記録を残さないため）。
+- 管理API のリクエストとレスポンスのボディは、BFF のログに出さない（Ki / OPc を含みうるため）。
+- 起動時に管理API への接続を確かめ、結果をログに出す。接続できなくても BFF は起動し、画面で接続できないことと、原因の見当（クライアント証明書の未登録、サーバー証明書の不一致や SAN の不足、名前解決や接続の失敗など）を示す。
+- 導入時の確認用に、管理API に接続できるかを確かめるコマンド（`aka-webgui check-admin`）を用意する。
+- 日時は BFF のタイムゾーン（環境変数 `TZ`、compose の既定は `Asia/Tokyo`）で表示する。
 
 ## 8. データモデル（BFF 専用 Valkey）
 

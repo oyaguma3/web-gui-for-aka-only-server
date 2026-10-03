@@ -10,7 +10,7 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 - 旧実装（Gin + HTMX + Alpine.js）は流用しない方針で、コード・README・ユーザーガイドごと削除済み。README は新しい実装に合わせて書き直す。
 - 作業はステップ単位で区切り、各ステップの終わりに「作ったもの」と「実際に動かして確かめたこと」を報告して確認をもらう。
   1. 骨格（環境変数による設定、slog、HTTPS 終端と自己署名の自動生成、テンプレートと静的ファイルの配信）… 実装済み
-  2. 管理API クライアント（mTLS、`X-Operator-Id`、エラー処理）
+  2. 管理API クライアント（mTLS、`X-Operator-Id`、エラー処理）… 実装済み。simwifi での確認のため Dockerfile と compose.yaml（BFF のみ）も先に作った。Valkey はステップ3で加える
   3. アカウントとセッション（argon2id、ログイン試行の制限、BFF 監査ログ、権限チェック）
   4. 画面（加入者 → AVクライアント → AV用サーバー証明書 → ログと監査ログ → アカウント管理 → ダッシュボード）
   5. compose、aka-only-server との通しの確認、`docs/operation-guide.md`、`README.md`
@@ -62,10 +62,22 @@ aka-only-server の管理 GUI（BFF + Web GUI）。aka-only-server の管理API 
 
 ## 検証の進め方
 
-- 単体テストに加えて、Valkey を使う結合テストは接続先を環境変数で指定したときだけ実行する形にする。aka-only-server 側は `AKA_TEST_VALKEY_ADDR` を使い、パッケージごとに論理データベースの番号を分けている。
+- 単体テストに加えて、Valkey を使う結合テストは接続先を環境変数で指定したときだけ実行する形にする。管理API の契約テスト（`internal/adminapi/integration_test.go`）も同様で、`WEBGUI_TEST_ADMIN_*` で接続先を指定したときだけ動く。aka-only-server 側は `AKA_TEST_VALKEY_ADDR` を使い、パッケージごとに論理データベースの番号を分けている。
 - 通しの確認は、compose を別のプロジェクト名（`-p`）と専用の `.env`、ループバックの別ポートで起動して行い、終わったらコンテナ・ボリューム・イメージを片付ける。
 - 実装した内容は、テストが通るだけでなく、実際に起動して操作して確かめる。確かめていない点は報告に明記する。
 - ドキュメントに載せる手順（コマンド）は、実際に試してから載せる。
+
+### 検証用の実機（simwifi）
+
+VPN 越しのアクセス、`tailscale cert`、Docker での動作、同一ホスト・別ホストでの aka-only-server との接続は、実機の simwifi で確かめる。単体テストと Valkey の結合テストは手元（WSL）で行う。手元の Docker では別プロジェクトのコンテナが動いているので、通しの確認には使わない。
+
+- 接続は `ssh simwifi`（ユーザー `claude`、sudo はパスワード不要）。Debian 13、x86_64。
+- Tailscale のアドレスは `100.126.128.93`、名前は `venus1001.tail5ec249.ts.net`。tailnet の HTTPS 証明書は有効にしてある。手元の WSL も同じ tailnet にいる。
+- `sudo tailscale cert --cert-file <cert> --key-file <key> venus1001.tail5ec249.ts.net` で Let's Encrypt の証明書を取り出せる（発行済みで tailscaled にキャッシュされている。出力ファイルは root 所有になるので chown する）。Let's Encrypt の発行回数制限があるので、キャッシュを消さない。
+- 作業は `~/aka-work/` の中だけで行う。`~/simwifi` は別アプリの開発で使っていたものなので触れない。
+- ソースは tar を ssh で流して転送する（GitHub への push は不要）。コミット済みのものは `git archive`、コミット前の作業ツリーは `git ls-files -co --exclude-standard -z | tar -c --null -T -` で送る。
+- ファイアウォールがなく、同じ LAN（`192.168.40.0/24`）からも届く。検証中の待ち受けは Tailscale のアドレスかループバックに限る。
+- 確認が終わったら、コンテナ・ボリューム・イメージ・作業ファイルを片付ける。
 
 ## 進め方
 

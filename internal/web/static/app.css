@@ -18,3 +18,15 @@ header nav .brand {
 body > footer {
   color: var(--pico-muted-color);
 }
+
+/* ダッシュボードの数値 */
+.metric {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 0;
+}
+
+/* エラーの通知 */
+.notice-error {
+  border-left: 0.25rem solid var(--pico-del-color);
+}

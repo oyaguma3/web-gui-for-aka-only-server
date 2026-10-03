@@ -7,7 +7,8 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	for _, name := range []string{"WEBGUI_ADDR", "WEBGUI_TLS_CERT", "WEBGUI_TLS_KEY", "WEBGUI_TLS_HOSTS", "WEBGUI_LOG_LEVEL"} {
+	for _, name := range []string{"WEBGUI_ADDR", "WEBGUI_TLS_CERT", "WEBGUI_TLS_KEY", "WEBGUI_TLS_HOSTS", "WEBGUI_LOG_LEVEL",
+		"WEBGUI_ADMIN_URL", "WEBGUI_ADMIN_CLIENT_CERT", "WEBGUI_ADMIN_CLIENT_KEY", "WEBGUI_ADMIN_SERVER_CERT"} {
 		t.Setenv(name, "")
 	}
 	c, err := Load()
@@ -22,6 +23,10 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if c.LogLevel != slog.LevelInfo {
 		t.Errorf("LogLevel = %v", c.LogLevel)
+	}
+	if c.AdminURL != "https://aka-only-server:9443/admin/v1" || c.AdminClientCertFile != "/certs/admin-client.pem" ||
+		c.AdminClientKeyFile != "" || c.AdminServerCertFile != "/certs/admin-server.pem" {
+		t.Errorf("admin: got %+v", c)
 	}
 }
 

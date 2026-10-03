@@ -1,17 +1,36 @@
 package web
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
 )
+
+// fakeAdmin は管理API の代わり。
+type fakeAdmin struct {
+	status adminapi.Status
+	err    error
+}
+
+func (f *fakeAdmin) Status(context.Context) (adminapi.Status, error) { return f.status, f.err }
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	h, err := New(Options{Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test"})
+	return newTestHandlerWith(t, &fakeAdmin{status: adminapi.Status{Version: "1.0.0", SubscriberCount: 12, ClientCount: 3}})
+}
+
+func newTestHandlerWith(t *testing.T, admin AdminAPI) http.Handler {
+	t.Helper()
+	h, err := New(Options{Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test", Admin: admin})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,14 +43,15 @@ func do(h http.Handler, r *http.Request) *httptest.ResponseRecorder {
 	return w
 }
 
-func TestHome(t *testing.T) {
+func TestDashboard(t *testing.T) {
 	h := newTestHandler(t)
 	w := do(h, httptest.NewRequest("GET", "https://gui.example/", nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"<title>ホーム | aka-only-server 管理</title>", "/static/htmx.min.js", "web-gui-for-aka-only-server test"} {
+	for _, want := range []string{"<title>ダッシュボード | aka-only-server 管理</title>", "/static/htmx.min.js",
+		"web-gui-for-aka-only-server test", `<p class="metric">12</p>`, "<td>1.0.0</td>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
 		}
@@ -111,5 +131,46 @@ func TestCrossOriginProtection(t *testing.T) {
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	if w := do(h, r); w.Code != http.StatusNotFound {
 		t.Errorf("same-origin POST: status = %d", w.Code)
+	}
+}
+
+func TestDashboardAdminError(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want string
+	}{
+		"unreachable": {
+			err:  fmt.Errorf("wrap: %w", &net.OpError{Op: "dial", Err: fmt.Errorf("connection refused")}),
+			want: "<p>管理API に接続できません。aka-only-server が起動しているか",
+		},
+		"unknown": {
+			err:  fmt.Errorf("something odd"),
+			want: "<p>aka-only-server の管理API に接続できません。</p>",
+		},
+		"api error": {
+			err:  &adminapi.Error{Status: 500, Problem: adminapi.Problem{Cause: adminapi.CauseSystemFailure}},
+			want: "管理API がエラーを返しました。",
+		},
+	} {
+		h := newTestHandlerWith(t, &fakeAdmin{err: tc.err})
+		w := do(h, httptest.NewRequest("GET", "https://gui.example/", nil))
+		// 管理API に届かなくても画面自体は返す。
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: status = %d", name, w.Code)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, tc.want) || strings.Contains(body, `class="metric"`) {
+			t.Errorf("%s: body = %s", name, body)
+		}
+	}
+}
+
+func TestDatetime(t *testing.T) {
+	f := funcs["datetime"].(func(time.Time) string)
+	if got := f(time.Time{}); got != "-" {
+		t.Errorf("zero = %q", got)
+	}
+	if got := f(time.Date(2026, 10, 3, 15, 4, 5, 0, time.UTC)); !strings.HasPrefix(got, "2026-10-0") {
+		t.Errorf("got %q", got)
 	}
 }

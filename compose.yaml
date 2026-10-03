@@ -1,0 +1,38 @@
+services:
+  aka-webgui:
+    build:
+      context: .
+      args:
+        VERSION: ${WEBGUI_VERSION:-dev}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Tokyo}
+      WEBGUI_ADDR: ":8443"
+      WEBGUI_TLS_CERT: ${WEBGUI_TLS_CERT:-/data/tls/cert.pem}
+      WEBGUI_TLS_KEY: ${WEBGUI_TLS_KEY:-/data/tls/key.pem}
+      WEBGUI_TLS_HOSTS: ${WEBGUI_TLS_HOSTS:-localhost,127.0.0.1}
+      WEBGUI_ADMIN_URL: ${WEBGUI_ADMIN_URL:-https://aka-only-server:9443/admin/v1}
+      WEBGUI_ADMIN_CLIENT_CERT: /certs/admin-client.pem
+      WEBGUI_ADMIN_SERVER_CERT: /certs/admin-server.pem
+      WEBGUI_LOG_LEVEL: ${WEBGUI_LOG_LEVEL:-info}
+    volumes:
+      # 自動生成したブラウザ向けの自己署名証明書を保存する。
+      - webgui-data:/data
+      # 管理API 用の証明書（admin-client.pem、admin-server.pem）と、持ち込みのブラウザ向け証明書を置く。
+      # コンテナは UID 65532 で動くので、ファイルはこの UID で読めるようにする。
+      - ./certs:/certs:ro
+    ports:
+      # Docker が公開したポートは ufw の規則を通らない。公開範囲はここのバインド先（VPN 側のアドレス）で制御する。
+      - "${WEBGUI_PUBLISH:-127.0.0.1:8444}:8443"
+    networks:
+      - default
+      - aka-av
+
+networks:
+  # aka-only-server の compose が作る共有ネットワーク。ホスト名 aka-only-server で管理API に接続する。
+  aka-av:
+    external: true
+    name: ${AKA_SHARED_NETWORK:-aka-av}
+
+volumes:
+  webgui-data:

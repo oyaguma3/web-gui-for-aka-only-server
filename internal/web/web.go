@@ -8,19 +8,28 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log/slog"
 	"net/http"
+
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
 )
 
 //go:embed templates static
 var assets embed.FS
 
+// AdminAPI は画面が使う管理API の操作。*adminapi.Client が満たす。
+type AdminAPI interface {
+	Status(ctx context.Context) (adminapi.Status, error)
+}
+
 // Handler は画面のハンドラー。
 type Handler struct {
 	log     *slog.Logger
 	version string
+	admin   AdminAPI
 	pages   pages
 	static  *staticFiles
 }
@@ -30,11 +39,12 @@ type Options struct {
 	Log *slog.Logger
 	// Version は画面のフッターに出すバージョン。
 	Version string
+	Admin   AdminAPI
 }
 
 // New は Handler を作る。テンプレートと静的ファイルはここで読み込む。
 func New(opts Options) (*Handler, error) {
-	h := &Handler{log: opts.Log, version: opts.Version}
+	h := &Handler{log: opts.Log, version: opts.Version, admin: opts.Admin}
 	var err error
 	if h.pages, err = parsePages(); err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -49,7 +59,7 @@ func New(opts Options) (*Handler, error) {
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", h.static)
-	mux.HandleFunc("GET /{$}", h.home)
+	mux.HandleFunc("GET /{$}", h.dashboard)
 	mux.HandleFunc("/", h.notFound)
 
 	cop := http.NewCrossOriginProtection()
@@ -66,8 +76,33 @@ func (h *Handler) Routes() http.Handler {
 	return handler
 }
 
-func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, http.StatusOK, "home", "ホーム", nil)
+// dashboardData はダッシュボードに渡す値。
+type dashboardData struct {
+	Status adminapi.Status
+	// AdminError は管理API から状態を取得できなかった場合の説明。
+	AdminError string
+}
+
+func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
+	var d dashboardData
+	st, err := h.admin.Status(r.Context())
+	if err != nil {
+		h.log.Warn("get admin api status", "error", err)
+		d.AdminError = adminErrorMessage(err)
+	}
+	d.Status = st
+	h.render(w, r, http.StatusOK, "dashboard", "ダッシュボード", d)
+}
+
+// adminErrorMessage は、管理API の呼び出しに失敗したときに画面に出す説明を返す。
+func adminErrorMessage(err error) string {
+	if adminapi.IsUnavailable(err) {
+		if hint := adminapi.Diagnose(err); hint != "" {
+			return hint
+		}
+		return "aka-only-server の管理API に接続できません。"
+	}
+	return "aka-only-server の管理API がエラーを返しました。"
 }
 
 func (h *Handler) notFound(w http.ResponseWriter, r *http.Request) {
