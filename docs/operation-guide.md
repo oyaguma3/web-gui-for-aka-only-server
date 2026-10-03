@@ -391,15 +391,29 @@ docker compose up -d
 
 ## 8. 更新
 
+更新の前にバックアップを取っておく（7 章）。データはボリュームに残る。
+
 ```bash
 git pull
 ```
+
+設定項目が増えていないかを確かめる。`git pull` は更新前の位置を `ORIG_HEAD` に残すので、`.env.example` の変更を表示できる。何も表示されなければ、そのまま進む。
+
+```bash
+git diff ORIG_HEAD HEAD -- .env.example
+```
+
+増えた項目があれば、`.env` に書き足す。たとえば、`COMPOSE_FILE` は後から加わった項目で、これがない `.env` のまま更新すると、同一ホストでも共有ネットワークに参加せず、管理API に接続できなくなる（「ホスト名を解決できません」）。
+
+ビルドし直して起動する。
 
 ```bash
 docker compose up -d --build
 ```
 
-データはボリュームに残る。更新の前にバックアップを取っておく。
+```bash
+docker compose exec aka-webgui /aka-webgui check-admin
+```
 
 ## 9. 障害時の確認
 
