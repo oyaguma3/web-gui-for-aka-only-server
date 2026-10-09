@@ -1,6 +1,9 @@
 package web
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +12,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +50,12 @@ func newTestHandler(t *testing.T) http.Handler {
 
 func newTestEnv(t *testing.T, admin AdminAPI) *testEnv {
 	t.Helper()
+	return newTestEnvLog(t, admin, discard)
+}
+
+// newTestEnvLog は、画面のログを log に出すテスト環境を作る。
+func newTestEnvLog(t *testing.T, admin AdminAPI, log *slog.Logger) *testEnv {
+	t.Helper()
 	st := authtest.NewMemStore()
 	svc, err := auth.New(t.Context(), auth.Options{
 		Store: st, Log: discard, InitialAdminID: ownerID, InitialAdminPassword: ownerPW,
@@ -54,7 +65,7 @@ func newTestEnv(t *testing.T, admin AdminAPI) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := New(Options{Log: discard, Version: "test", Admin: admin, Auth: svc})
+	h, err := New(Options{Log: log, Version: "test", Admin: admin, Auth: svc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,5 +246,47 @@ func TestDatetime(t *testing.T) {
 	}
 	if got := f(time.Date(2026, 10, 3, 15, 4, 5, 0, time.UTC)); !strings.HasPrefix(got, "2026-10-0") {
 		t.Errorf("got %q", got)
+	}
+}
+
+// TestAccessLogTraceID は、リクエストごとに採番したトレースID がアクセスログに出て、管理API の呼び出しに渡ることを確かめる。
+func TestAccessLogTraceID(t *testing.T) {
+	var buf bytes.Buffer
+	fa := newFakeAdmin()
+	env := newTestEnvLog(t, fa, slog.New(slog.NewJSONHandler(&buf, nil)))
+	owner := env.loginAs(t, ownerID, ownerPW)
+
+	buf.Reset()
+	fa.mu.Lock()
+	fa.traces = nil
+	fa.mu.Unlock()
+	if w := do(env.h, request("GET", "/subscribers?prefix=44010", owner, nil)); w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+
+	var access struct {
+		Msg     string `json:"msg"`
+		Path    string `json:"path"`
+		TraceID string `json:"trace_id"`
+	}
+	sc := bufio.NewScanner(&buf)
+	for sc.Scan() {
+		var e struct {
+			Msg string `json:"msg"`
+		}
+		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Msg == "access" {
+			if err := json.Unmarshal(sc.Bytes(), &access); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if access.Path != "/subscribers" || !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(access.TraceID) {
+		t.Fatalf("access log = %+v", access)
+	}
+	fa.mu.Lock()
+	traces := slices.Clone(fa.traces)
+	fa.mu.Unlock()
+	if len(traces) == 0 || slices.ContainsFunc(traces, func(id string) bool { return id != access.TraceID }) {
+		t.Errorf("trace ids passed to admin api = %v, want all %s", traces, access.TraceID)
 	}
 }

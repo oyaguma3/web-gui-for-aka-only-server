@@ -323,10 +323,13 @@ type AuditLogEntry struct {
 	// Operator は X-Operator-Id で渡した操作者。渡さなかった場合は空。
 	Operator string `json:"operator"`
 	// MgmtClient は管理クライアント（BFF）の識別名。
-	MgmtClient string         `json:"mgmtClient"`
-	Action     string         `json:"action"`
-	Target     string         `json:"target"`
-	Detail     map[string]any `json:"detail"`
+	MgmtClient string `json:"mgmtClient"`
+	Action     string `json:"action"`
+	Target     string `json:"target"`
+	// TraceID は X-Trace-ID で渡した（または aka-only-server が採番した）トレースID。
+	// 管理API 0.2.0 より前のサーバーや、それより前に記録されたエントリでは空。
+	TraceID string         `json:"traceId"`
+	Detail  map[string]any `json:"detail"`
 }
 
 // AuditLogList は監査ログ（新しい順）。

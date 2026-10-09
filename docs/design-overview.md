@@ -133,6 +133,7 @@ aka-only-server の管理 GUI 実装の1つ。aka-only-server の管理API だ�
 - 同一ホストで動かす場合は、aka-only-server が作る共有の Docker ネットワークに参加し、`https://aka-only-server:9443` で接続する。別ホストの場合は、aka-only-server 側で管理API の公開先アドレスを変える。
 - 手順は aka-only-server の `docs/operation-guide.md` を参照。
 - 操作者のユーザーID は、リクエストのコンテキストに入れておき、管理API クライアントが `X-Operator-Id` ヘッダーで渡す。変更操作と Ki / OPc の取得は、操作者が入っていなければ管理API に送らない（監査ログに操作者のない記録を残さないため）。
+- BFF はブラウザのリクエストごとにトレースID（16進32桁）を採番してアクセスログに出し、管理API クライアントが `X-Trace-ID` ヘッダーで渡す（画面からでない呼び出しでは呼び出しごとに採番する）。aka-only-server はこれをログ（`admin request completed`、`audit`）と監査ログの `traceId` に使うので、BFF の操作と aka-only-server の記録をトレースID で突き合わせられる。監査ログの画面にもトレースID を出す。API クライアントのエラーには、応答の `X-Trace-ID` を持たせる（管理API 0.2.0。2026-10-10）。
 - 管理API のリクエストとレスポンスのボディは、BFF のログに出さない（Ki / OPc を含みうるため）。
 - 起動時に管理API への接続を確かめ、結果をログに出す。接続できなくても BFF は起動し、画面で接続できないことと、原因の見当（クライアント証明書の未登録、サーバー証明書の不一致や SAN の不足、名前解決や接続の失敗など）を示す。
 - 導入時の確認用に、管理API に接続できるかを確かめるコマンド（`aka-webgui check-admin`）を用意する。

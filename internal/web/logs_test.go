@@ -99,7 +99,7 @@ func TestAudit(t *testing.T) {
 		e.admin.audit = append(e.admin.audit, adminapi.AuditLogEntry{
 			ID: fmt.Sprintf("%010d-0", i+1), Time: time.Now().UTC(), Operator: "bob", MgmtClient: "bff",
 			Action: adminapi.AuditSubscriberCreate, Target: fmt.Sprintf("44010000000%04d", i),
-			Detail: map[string]any{"sqn": "000000000000", "amf": "8000"},
+			Detail: map[string]any{"sqn": "000000000000", "amf": "8000"}, TraceID: fmt.Sprintf("trace-%02d", i),
 		})
 	}
 
@@ -108,7 +108,8 @@ func TestAudit(t *testing.T) {
 	}
 	body := html.UnescapeString(do(e.h, request("GET", "/audit", e.owner, nil)).Body.String())
 	if !strings.Contains(body, "加入者の登録") || !strings.Contains(body, "440100000000059") || strings.Contains(body, "440100000000009") ||
-		!strings.Contains(body, `{"amf":"8000","sqn":"000000000000"}`) || !strings.Contains(body, "before=0000000011-0") {
+		!strings.Contains(body, `{"amf":"8000","sqn":"000000000000"}`) || !strings.Contains(body, "before=0000000011-0") ||
+		!strings.Contains(body, "<th scope=\"col\">トレースID</th>") || !strings.Contains(body, "trace-59") {
 		t.Errorf("server audit: %s", body)
 	}
 	// さらに古いもの: 行を末尾に足し、続きがなければボタンを消す。
@@ -116,13 +117,14 @@ func TestAudit(t *testing.T) {
 	body = w.Body.String()
 	if !strings.HasPrefix(body, `<div id="audit-pager">`) || strings.Contains(body, "さらに古いものを表示") ||
 		!strings.Contains(body, `hx-swap-oob="beforeend:#audit-rows"`) ||
-		!strings.Contains(body, "440100000000000") || strings.Contains(body, "<html") {
+		!strings.Contains(body, "440100000000000") || !strings.Contains(body, "trace-00") || strings.Contains(body, "<html") {
 		t.Errorf("more: %s", body)
 	}
 
 	// BFF の監査ログ（ログインやアカウントの操作）。
 	body = do(e.h, request("GET", "/audit?source=bff", e.owner, nil)).Body.String()
-	if !strings.Contains(body, "アカウントの作成") || !strings.Contains(body, "パスワードの変更") || !strings.Contains(body, "ログイン") {
+	if !strings.Contains(body, "アカウントの作成") || !strings.Contains(body, "パスワードの変更") || !strings.Contains(body, "ログイン") ||
+		strings.Contains(body, "トレースID") {
 		t.Errorf("bff audit: %s", body)
 	}
 }

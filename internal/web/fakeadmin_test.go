@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/adminapi"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/trace"
 )
 
 // fakeAdmin はテスト用の管理API。加入者と AVクライアントをメモリに持ち、呼び出しごとに操作者を記録する。
@@ -28,6 +29,8 @@ type fakeAdmin struct {
 	audit   []adminapi.AuditLogEntry
 	// calls は「操作名 操作者」の記録。
 	calls []string
+	// traces は呼び出しごとのトレースID（コンテキストに入っていたもの）。
+	traces []string
 }
 
 func newFakeAdmin() *fakeAdmin {
@@ -64,6 +67,7 @@ func notFound(cause string) error {
 // record は呼び出しを記録し、設定されたエラーを返す。
 func (f *fakeAdmin) record(ctx context.Context, op string) error {
 	f.calls = append(f.calls, op+" "+adminapi.OperatorFrom(ctx))
+	f.traces = append(f.traces, trace.From(ctx))
 	return f.err
 }
 

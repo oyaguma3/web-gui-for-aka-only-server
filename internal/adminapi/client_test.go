@@ -12,12 +12,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/certs"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/trace"
 )
 
 var discard = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -103,9 +105,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func TestStatusOverMTLS(t *testing.T) {
-	var gotFP, gotPath string
+	var gotFP, gotPath, gotTrace string
 	env := newTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
+		gotTrace = r.Header.Get("X-Trace-ID")
 		gotFP = certs.Fingerprint(r.TLS.PeerCertificates[0])
 		writeJSON(w, 200, map[string]any{
 			"version": "1.2.3", "bootId": "b", "startedAt": "2026-10-03T00:00:00Z",
@@ -124,12 +127,35 @@ func TestStatusOverMTLS(t *testing.T) {
 	if gotFP != env.clientFP {
 		t.Error("client certificate was not presented")
 	}
+	// コンテキストにトレースID がなければ、呼び出しごとに採番して送る。
+	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(gotTrace) {
+		t.Errorf("X-Trace-ID = %q", gotTrace)
+	}
 	if st.Version != "1.2.3" || st.SubscriberCount != 7 || st.ClientCount != 2 ||
 		!st.AVServerCertificateNotAfter.Equal(time.Date(2036, 10, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("status = %+v", st)
 	}
 	if certs.Fingerprint(env.client.ClientCertificate()) != env.clientFP {
 		t.Error("ClientCertificate mismatch")
+	}
+}
+
+func TestTraceID(t *testing.T) {
+	var gotTrace string
+	env := newTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		gotTrace = r.Header.Get("X-Trace-ID")
+		w.Header().Set("X-Trace-ID", gotTrace)
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		io.WriteString(w, `{"title":"Not Found","status":404,"cause":"USER_NOT_FOUND"}`)
+	})
+	ctx := trace.With(t.Context(), "0123456789abcdef0123456789abcdef")
+	_, err := env.client.GetSubscriber(ctx, "440100000000000")
+	if gotTrace != "0123456789abcdef0123456789abcdef" {
+		t.Errorf("X-Trace-ID = %q", gotTrace)
+	}
+	if apiErr, ok := errors.AsType[*Error](err); !ok || apiErr.TraceID != gotTrace {
+		t.Errorf("err = %#v", err)
 	}
 }
 

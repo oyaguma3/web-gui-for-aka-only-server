@@ -6,6 +6,8 @@
 //
 // 変更操作と Ki / OPc の取得には操作者のユーザーID が要る。WithOperator でコンテキストに入れておくと
 // X-Operator-Id ヘッダーで渡す。入っていなければ ErrNoOperator を返し、リクエストを送らない。
+//
+// トレースID（internal/trace）がコンテキストに入っていれば X-Trace-ID ヘッダーで渡す。入っていなければ呼び出しごとに採番する。
 package adminapi
 
 import (
@@ -25,6 +27,8 @@ import (
 	"os"
 	"regexp"
 	"time"
+
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/trace"
 )
 
 const (
@@ -32,6 +36,7 @@ const (
 	// maxResponseBytes は応答ボディを読む上限。ログの取得（最大 1000 件）でも収まる大きさにする。
 	maxResponseBytes = 16 << 20
 	operatorHeader   = "X-Operator-Id"
+	traceHeader      = "X-Trace-ID"
 )
 
 // operatorPattern は X-Operator-Id の形式。管理API 側の検証と同じ。
@@ -168,9 +173,11 @@ type Problem struct {
 // Error は管理API がエラーを返したことを表す。
 // 応答が ProblemDetails でなかった場合、Problem は空になる。
 type Error struct {
-	Method  string
-	Path    string
-	Status  int
+	Method string
+	Path   string
+	Status int
+	// TraceID は aka-only-server が応答の X-Trace-ID で返したトレースID（管理API 0.2.0 より前のサーバーでは送った値）。
+	TraceID string
 	Problem Problem
 }
 
@@ -245,6 +252,7 @@ func (c *Client) send(ctx context.Context, req request) (*http.Response, error) 
 	case op == "" && req.needOperator:
 		return nil, ErrNoOperator
 	}
+	traceID := cmp.Or(trace.From(ctx), trace.New())
 
 	u := c.base.JoinPath(req.path...)
 	u.RawQuery = req.query.Encode()
@@ -268,22 +276,25 @@ func (c *Client) send(ctx context.Context, req request) (*http.Response, error) 
 	if op != "" {
 		hreq.Header.Set(operatorHeader, op)
 	}
+	hreq.Header.Set(traceHeader, traceID)
 
 	start := time.Now()
 	resp, err := c.hc.Do(hreq)
 	if err != nil {
-		c.log.Warn("admin api call failed", "method", req.method, "path", u.Path, "error", err)
+		c.log.Warn("admin api call failed", "method", req.method, "path", u.Path, "trace_id", traceID, "error", err)
 		return nil, fmt.Errorf("admin api %s %s: %w", req.method, u.Path, err)
 	}
+	// aka-only-server は使ったトレースID を応答で返す（送った値と同じになるはず）。
+	traceID = cmp.Or(resp.Header.Get(traceHeader), traceID)
 	// リクエストとレスポンスのボディは出さない（Ki / OPc を含みうるため）。
 	c.log.Debug("admin api call", "method", req.method, "path", u.Path, "status", resp.StatusCode,
-		"duration_ms", time.Since(start).Milliseconds(), "operator", op)
+		"duration_ms", time.Since(start).Milliseconds(), "operator", op, "trace_id", traceID)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
 	defer drainClose(resp.Body)
-	apiErr := &Error{Method: req.method, Path: u.Path, Status: resp.StatusCode}
+	apiErr := &Error{Method: req.method, Path: u.Path, Status: resp.StatusCode, TraceID: traceID}
 	if mt, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mt == "application/problem+json" {
 		// 読めなくても、ステータスコードだけで扱えるようにする。
 		_ = json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), &apiErr.Problem)

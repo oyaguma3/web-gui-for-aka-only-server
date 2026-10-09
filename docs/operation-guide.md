@@ -342,6 +342,7 @@ docker compose exec valkey sh -c 'valkey-cli -a "$VALKEY_PASSWORD" --no-auth-war
 docker compose logs -f aka-webgui
 ```
 
+- BFF のアクセスログの `trace_id` は、その画面の操作で呼んだ管理API に `X-Trace-ID` として渡る。aka-only-server のログ（`admin request completed`、`audit`）と監査ログの画面の「トレースID」が同じ値になるので、どの画面の操作だったかを突き合わせられる（aka-only-server が管理API 0.2.0 以降の場合）。
 - BFF の監査ログは `WEBGUI_AUDIT_MAX` 件（既定 10000）を超えると古いものから消える。長く残したい場合は、Docker のログを外部に保存する。
 - パスワード、Ki、OPc は BFF のログにも監査ログにも出ない。
 - Docker のログは既定では無制限に増える。`/etc/docker/daemon.json` などでローテーションを設定しておく。

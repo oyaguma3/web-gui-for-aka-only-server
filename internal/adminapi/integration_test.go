@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/certs"
+	"github.com/oyaguma3/web-gui-for-aka-only-server/internal/trace"
 )
 
 // 実際の aka-only-server の管理API を相手にした契約テスト。
@@ -76,8 +77,9 @@ func TestIntegrationSubscribers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 登録（既定値に任せる項目は送らない）。
-	created, err := c.CreateSubscriber(ctx, SubscriberCreate{
+	// 登録（既定値に任せる項目は送らない）。渡したトレースID が監査ログに残る（管理API 0.2.0）。
+	createTrace := trace.New()
+	created, err := c.CreateSubscriber(trace.With(ctx, createTrace), SubscriberCreate{
 		IMSI: imsi, Ki: "465B5CE8B199B49FAA5F0A2EE238A6BC", OPc: "cd63cb71954a9f4e48a5994e37a02baf",
 	})
 	if err != nil {
@@ -87,14 +89,19 @@ func TestIntegrationSubscribers(t *testing.T) {
 		created.AllowPlain || len(created.AllowedClientIDs) != 0 || created.CreatedAt.IsZero() {
 		t.Errorf("created = %+v", created)
 	}
-	if e := findAudit(t, c, AuditSubscriberCreate, imsi); e.Operator != "it-alice" || e.MgmtClient == "" {
+	if e := findAudit(t, c, AuditSubscriberCreate, imsi); e.Operator != "it-alice" || e.MgmtClient == "" || e.TraceID != createTrace {
 		t.Errorf("audit create = %+v", e)
 	}
 
 	// 同じ IMSI はもう登録できない。
-	_, err = c.CreateSubscriber(ctx, SubscriberCreate{IMSI: imsi, Ki: strings.Repeat("0", 32), OPc: strings.Repeat("0", 32)})
+	dupTrace := trace.New()
+	_, err = c.CreateSubscriber(trace.With(ctx, dupTrace), SubscriberCreate{IMSI: imsi, Ki: strings.Repeat("0", 32), OPc: strings.Repeat("0", 32)})
 	if CauseOf(err) != CauseSubscriberExists {
 		t.Errorf("duplicate: err = %v", err)
+	}
+	// エラーの応答でも、送ったトレースID が返る。
+	if apiErr, ok := errors.AsType[*Error](err); !ok || apiErr.TraceID != dupTrace {
+		t.Errorf("duplicate: trace id = %#v", err)
 	}
 
 	// 入力の誤りは項目つきで返る。

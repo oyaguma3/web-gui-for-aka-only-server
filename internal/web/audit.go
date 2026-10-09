@@ -44,6 +44,10 @@ type auditRow struct {
 	Action string
 	Target string
 	Detail string
+	// Server は aka-only-server の監査ログの行か（トレースID の列を出す）。
+	Server bool
+	// TraceID は aka-only-server の監査ログのトレースID。
+	TraceID string
 }
 
 type auditData struct {
@@ -74,6 +78,7 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 			d.Rows = append(d.Rows, auditRow{
 				ID: e.ID, Time: e.Time, Operator: cmp.Or(e.Operator, "（不明）"), Via: e.MgmtClient,
 				Action: e.Action, Target: e.Target, Detail: compactJSON(e.Detail),
+				Server: true, TraceID: e.TraceID,
 			})
 		}
 		d.Next = l.NextBefore
