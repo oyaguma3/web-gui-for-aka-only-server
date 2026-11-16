@@ -22,7 +22,7 @@ aka-only-server の管理 GUI 実装の1つ。aka-only-server の管理API だ�
 
 ## 2. 技術方針
 
-- 言語: Go 1.27.1。
+- 言語: Go 1.27.4。
 - 標準ライブラリを優先する。HTTP は `net/http`、テンプレートは `html/template`、静的ファイルは `embed`、ログは `log/slog`。
 - HTMX と Pico CSS はファイルをリポジトリに同梱して配信する。Alpine.js は使わない。
 - 外部依存は `github.com/valkey-io/valkey-go`（Valkey クライアント）と `golang.org/x/crypto`（argon2id）に限る。
